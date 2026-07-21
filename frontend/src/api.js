@@ -37,6 +37,8 @@ export const api = {
   getSchema: () => fetch(`${BASE_URL}/schema`, { credentials: "include" }).then(handle),
   getLinks: () => fetch(`${BASE_URL}/links`, { credentials: "include" }).then(handle),
   getLink: (id) => fetch(`${BASE_URL}/links/${id}`, { credentials: "include" }).then(handle),
+  enrichSiteReference: (id) =>
+    fetch(`${BASE_URL}/links/${id}/enrich-reference`, { method: "POST", credentials: "include" }).then(handle),
   createLink: (payload) =>
     fetch(`${BASE_URL}/links`, {
       method: "POST",
@@ -56,4 +58,15 @@ export const api = {
       method: "DELETE",
       credentials: "include",
     }).then(handle),
+
+  importFile: (file, { upsert = false } = {}) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upsert", upsert);
+    return fetch(`${BASE_URL}/import`, {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    }).then(handle);
+  },
 };

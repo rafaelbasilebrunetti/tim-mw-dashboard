@@ -5,6 +5,9 @@ import LinksTable from "./components/LinksTable";
 import LinkFormModal from "./components/LinkFormModal";
 import LoginPage from "./components/LoginPage";
 import ChangePasswordModal from "./components/ChangePasswordModal";
+import SiteDetailModal from "./components/SiteDetailModal";
+import QuickAddModal from "./components/QuickAddModal";
+import ImportModal from "./components/ImportModal";
 
 export default function App() {
   const [authChecked, setAuthChecked] = useState(false);
@@ -13,9 +16,12 @@ export default function App() {
   const [links, setLinks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [modalRecord, setModalRecord] = useState(null); // null = fechado, {} = novo, {...} = editar
+  const [modalRecord, setModalRecord] = useState(null); // null = fechado, {...} = editar
   const [search, setSearch] = useState("");
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [selectedLink, setSelectedLink] = useState(null);
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   useEffect(() => {
     api
@@ -65,6 +71,12 @@ export default function App() {
     await loadAll();
   }
 
+  async function handleQuickAdd(payload) {
+    await api.createLink(payload);
+    setShowQuickAdd(false);
+    await loadAll();
+  }
+
   async function handleLogout() {
     await api.logout().catch(() => {});
     setAuthenticated(false);
@@ -98,10 +110,16 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setModalRecord({})}
+              onClick={() => setShowQuickAdd(true)}
               className="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-base"
             >
-              + Novo link
+              + Adicionar Site
+            </button>
+            <button
+              onClick={() => setShowImport(true)}
+              className="rounded-md border border-line px-3.5 py-1.5 text-[13px] font-medium text-muted hover:text-ink"
+            >
+              Importar Dados
             </button>
             <button
               onClick={() => setShowChangePassword(true)}
@@ -148,6 +166,7 @@ export default function App() {
             <LinksTable
               schema={schema}
               links={filtered}
+              onSelect={(link) => setSelectedLink(link)}
               onEdit={(link) => setModalRecord(link)}
               onDelete={handleDelete}
             />
@@ -166,6 +185,29 @@ export default function App() {
 
       {showChangePassword && (
         <ChangePasswordModal onClose={() => setShowChangePassword(false)} />
+      )}
+
+      {selectedLink && (
+        <SiteDetailModal
+          schema={schema}
+          link={selectedLink}
+          onEdit={(link) => {
+            setSelectedLink(null);
+            setModalRecord(link);
+          }}
+          onClose={() => setSelectedLink(null)}
+          onEnriched={(updated) =>
+            setLinks((prev) => prev.map((l) => (l.id === updated.id ? updated : l)))
+          }
+        />
+      )}
+
+      {showQuickAdd && (
+        <QuickAddModal schema={schema} onSave={handleQuickAdd} onClose={() => setShowQuickAdd(false)} />
+      )}
+
+      {showImport && (
+        <ImportModal onImported={loadAll} onClose={() => setShowImport(false)} />
       )}
     </div>
   );

@@ -5,6 +5,7 @@
 data/*.db
 data/*.xlsx
 data/*.xls
+data/*.xlsb
 data/*.csv
 !config/templates/*.csv
 config/templates/column_mapping.json

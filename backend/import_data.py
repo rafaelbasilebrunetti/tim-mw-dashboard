@@ -140,41 +140,30 @@ def build_column_mapping(file_headers, schema):
     return mapping, unmatched_schema
 
 
-def read_rows(path, sheet_name=None):
-    wb = load_workbook(path, read_only=True, data_only=True)
+def read_rows_from_workbook(wb, sheet_name=None):
     ws = wb[sheet_name] if sheet_name else wb[wb.sheetnames[0]]
-
     rows_iter = ws.iter_rows(values_only=True)
     file_headers = [str(h).strip() if h is not None else "" for h in next(rows_iter)]
     data_rows = [row for row in rows_iter]
+    return file_headers, data_rows
+
+
+def read_rows(path, sheet_name=None):
+    wb = load_workbook(path, read_only=True, data_only=True)
+    file_headers, data_rows = read_rows_from_workbook(wb, sheet_name)
     wb.close()
     return file_headers, data_rows
 
 
-def import_file(path, sheet_name=None, dry_run=False, upsert=False):
-    if not os.path.exists(path):
-        print(f"Arquivo não encontrado: {path}")
-        sys.exit(1)
-
-    schema = load_schema()
-    file_headers, data_rows = read_rows(path, sheet_name)
-
-    print(f"Arquivo: {path}")
-    print(f"Colunas encontradas: {len(file_headers)}  |  Colunas no schema: {len(schema)}")
-    print(f"Linhas de dados encontradas: {len(data_rows)}")
-
+def process_rows(file_headers, data_rows, schema, conn, dry_run=False, upsert=False):
+    """
+    Núcleo do import, sem I/O de arquivo nem prints - usado tanto pelo
+    CLI (import_file) quanto pelo endpoint web (import_routes.py).
+    Retorna um relatório estruturado (dict) em vez de imprimir.
+    """
     mapping, unmatched_schema = build_column_mapping(file_headers, schema)
-
     unmatched_file_cols = [h for h, f in zip(file_headers, mapping) if f is None and h]
-    if unmatched_file_cols:
-        print(f"\n⚠ {len(unmatched_file_cols)} coluna(s) do arquivo não reconhecida(s) "
-              f"(serão ignoradas): {unmatched_file_cols}")
-    if unmatched_schema:
-        names = [f["csv_header"] for f in unmatched_schema]
-        print(f"\nℹ {len(unmatched_schema)} campo(s) do schema sem coluna correspondente "
-              f"no arquivo (ficarão vazios): {names}")
 
-    conn = None if dry_run else get_connection()
     imported, skipped_empty, updated, failed = 0, 0, 0, []
     suspicious_time_cells = []
 
@@ -224,28 +213,64 @@ def import_file(path, sheet_name=None, dry_run=False, upsert=False):
         except Exception as exc:
             # Uma linha ruim não deve derrubar a importação inteira -
             # registra o erro e segue para a próxima.
-            failed.append((row_num, tim_key, str(exc)))
+            failed.append({"row": row_num, "tim_key": tim_key, "error": str(exc)})
 
     if not dry_run:
         conn.commit()
+
+    return {
+        "imported": imported,
+        "updated": updated,
+        "skipped_empty": skipped_empty,
+        "failed": failed,
+        "unmatched_file_columns": unmatched_file_cols,
+        "unmatched_schema_fields": [f["csv_header"] for f in unmatched_schema],
+        "suspicious_time_cells": [
+            {"row": r, "column": h, "value": str(v)} for r, h, v in suspicious_time_cells
+        ],
+    }
+
+
+def import_file(path, sheet_name=None, dry_run=False, upsert=False):
+    if not os.path.exists(path):
+        print(f"Arquivo não encontrado: {path}")
+        sys.exit(1)
+
+    schema = load_schema()
+    file_headers, data_rows = read_rows(path, sheet_name)
+
+    print(f"Arquivo: {path}")
+    print(f"Colunas encontradas: {len(file_headers)}  |  Colunas no schema: {len(schema)}")
+    print(f"Linhas de dados encontradas: {len(data_rows)}")
+
+    conn = None if dry_run else get_connection()
+    report = process_rows(file_headers, data_rows, schema, conn, dry_run=dry_run, upsert=upsert)
+    if not dry_run:
         conn.close()
 
+    if report["unmatched_file_columns"]:
+        print(f"\n⚠ {len(report['unmatched_file_columns'])} coluna(s) do arquivo não reconhecida(s) "
+              f"(serão ignoradas): {report['unmatched_file_columns']}")
+    if report["unmatched_schema_fields"]:
+        print(f"\nℹ {len(report['unmatched_schema_fields'])} campo(s) do schema sem coluna correspondente "
+              f"no arquivo (ficarão vazios): {report['unmatched_schema_fields']}")
+
     print(f"\n{'[DRY RUN] ' if dry_run else ''}Concluído:")
-    print(f"  Novas linhas importadas: {imported}")
+    print(f"  Novas linhas importadas: {report['imported']}")
     if upsert:
-        print(f"  Linhas atualizadas (TIM KEY já existia): {updated}")
-    print(f"  Linhas vazias puladas: {skipped_empty}")
+        print(f"  Linhas atualizadas (TIM KEY já existia): {report['updated']}")
+    print(f"  Linhas vazias puladas: {report['skipped_empty']}")
 
-    if suspicious_time_cells:
-        print(f"\n⚠ {len(suspicious_time_cells)} célula(s) com valor de HORA em campo de DATA "
+    if report["suspicious_time_cells"]:
+        print(f"\n⚠ {len(report['suspicious_time_cells'])} célula(s) com valor de HORA em campo de DATA "
               f"(provável erro de formatação na planilha original - ficaram vazias no banco, revise):")
-        for row_num, header, value in suspicious_time_cells[:15]:
-            print(f'   linha {row_num}, coluna "{header}": {value}')
+        for cell in report["suspicious_time_cells"][:15]:
+            print(f'   linha {cell["row"]}, coluna "{cell["column"]}": {cell["value"]}')
 
-    if failed:
-        print(f"\n✗ {len(failed)} linha(s) falharam e foram puladas:")
-        for row_num, tim_key, error in failed[:15]:
-            print(f'   linha {row_num} (TIM KEY={tim_key}): {error}')
+    if report["failed"]:
+        print(f"\n✗ {len(report['failed'])} linha(s) falharam e foram puladas:")
+        for item in report["failed"][:15]:
+            print(f'   linha {item["row"]} (TIM KEY={item["tim_key"]}): {item["error"]}')
 
 
 if __name__ == "__main__":

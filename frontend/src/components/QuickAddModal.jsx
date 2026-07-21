@@ -1,13 +1,14 @@
 import { useState } from "react";
-import { groupSchema } from "../schemaUtils";
 import FieldInput from "./FieldInput";
 
-export default function LinkFormModal({ schema, initialData, onSave, onClose }) {
-  const [values, setValues] = useState(initialData || {});
+const QUICK_ADD_FIELDS = ["oc", "tim_key", "site_a", "site_b", "scope"];
+
+export default function QuickAddModal({ schema, onSave, onClose }) {
+  const [values, setValues] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  const groups = groupSchema(schema);
-  const isEditing = Boolean(initialData?.id);
+
+  const fields = QUICK_ADD_FIELDS.map((name) => schema.find((f) => f.internal_name === name)).filter(Boolean);
 
   function handleChange(name, value) {
     setValues((prev) => ({ ...prev, [name]: value }));
@@ -18,8 +19,7 @@ export default function LinkFormModal({ schema, initialData, onSave, onClose }) 
     setSaving(true);
     setError(null);
     try {
-      const { id, updated_at, ...payload } = values;
-      await onSave(payload);
+      await onSave(values);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -29,11 +29,9 @@ export default function LinkFormModal({ schema, initialData, onSave, onClose }) 
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
-      <div className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-xl border border-line bg-surface shadow-2xl">
+      <div className="flex w-full max-w-md flex-col rounded-xl border border-line bg-surface shadow-2xl">
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
-          <h2 className="font-mono text-[15px] text-ink">
-            {isEditing ? `Editar link — ${values.tim_key || values.oc || "#" + values.id}` : "Novo link"}
-          </h2>
+          <h2 className="font-mono text-[15px] text-ink">Adicionar site</h2>
           <button
             onClick={onClose}
             className="rounded-md px-2 py-1 text-muted hover:bg-base hover:text-ink"
@@ -43,26 +41,18 @@ export default function LinkFormModal({ schema, initialData, onSave, onClose }) 
           </button>
         </div>
 
-        <form id="link-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-5 py-4">
-          {Object.entries(groups).map(([groupName, fields]) =>
-            fields.length ? (
-              <fieldset key={groupName} className="mb-6">
-                <legend className="mb-3 text-[13px] font-medium uppercase tracking-wide text-accent">
-                  {groupName}
-                </legend>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {fields.map((field) => (
-                    <FieldInput
-                      key={field.internal_name}
-                      field={field}
-                      value={values[field.internal_name]}
-                      onChange={handleChange}
-                    />
-                  ))}
-                </div>
-              </fieldset>
-            ) : null
-          )}
+        <form id="quick-add-form" onSubmit={handleSubmit} className="flex flex-col gap-3 px-5 py-4">
+          <p className="text-[12px] text-muted">
+            Cadastro rápido — os demais campos podem ser preenchidos depois, editando o site.
+          </p>
+          {fields.map((field) => (
+            <FieldInput
+              key={field.internal_name}
+              field={field}
+              value={values[field.internal_name]}
+              onChange={handleChange}
+            />
+          ))}
         </form>
 
         <div className="flex items-center justify-between gap-3 border-t border-line px-5 py-4">
@@ -77,11 +67,11 @@ export default function LinkFormModal({ schema, initialData, onSave, onClose }) 
             </button>
             <button
               type="submit"
-              form="link-form"
+              form="quick-add-form"
               disabled={saving}
               className="rounded-md bg-accent px-3.5 py-1.5 text-[13px] font-medium text-base disabled:opacity-50"
             >
-              {saving ? "Salvando..." : isEditing ? "Salvar alterações" : "Criar link"}
+              {saving ? "Salvando..." : "Criar site"}
             </button>
           </div>
         </div>

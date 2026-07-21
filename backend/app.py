@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from auth import require_auth
 from auth import router as auth_router
 from database import create_table
+from import_routes import router as import_router
 from routes import router
 
 app = FastAPI(title="TIM MW Report Dashboard API")
@@ -36,8 +37,9 @@ app.add_middleware(
 
 # Rotas de login/logout/me ficam abertas (sem exigir sessão).
 app.include_router(auth_router)
-# Todo o resto da API (schema, links) exige sessão válida.
+# Todo o resto da API (schema, links, import) exige sessão válida.
 app.include_router(router, dependencies=[Depends(require_auth)])
+app.include_router(import_router, dependencies=[Depends(require_auth)])
 
 
 @app.on_event("startup")

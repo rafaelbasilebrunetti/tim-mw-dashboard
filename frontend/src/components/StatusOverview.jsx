@@ -1,4 +1,4 @@
-import { statusColor } from "../schemaUtils";
+import { resolveCompletion } from "../statusFlow";
 
 const DOT = {
   green: "bg-track-done",
@@ -9,17 +9,13 @@ const DOT = {
 
 export default function StatusOverview({ links }) {
   const total = links.length;
-  const counts = links.reduce((acc, link) => {
-    const color = statusColor(link.preliminary_status);
-    acc[color] = (acc[color] || 0) + 1;
-    return acc;
-  }, {});
+  const completed = links.filter((l) => resolveCompletion(l).completed).length;
   const holds = links.filter((l) => l.hold && String(l.hold).trim() !== "").length;
 
   const cards = [
     { label: "Total de Links", value: total, dot: null },
-    { label: "Em andamento", value: counts.amber || 0, dot: DOT.amber },
-    { label: "Concluídos", value: counts.green || 0, dot: DOT.green },
+    { label: "Em andamento", value: total - completed, dot: DOT.amber },
+    { label: "Concluídos", value: completed, dot: DOT.green },
     { label: "Em Hold", value: holds, dot: DOT.red },
   ];
 

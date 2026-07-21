@@ -3,3 +3,5 @@ uvicorn==0.34.0
 pydantic==2.13.4
 openpyxl==3.1.5
 python-dotenv==1.0.1
+python-multipart==0.0.20
+pyxlsb==1.0.10

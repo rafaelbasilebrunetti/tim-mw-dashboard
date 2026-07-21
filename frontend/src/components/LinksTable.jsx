@@ -1,5 +1,6 @@
 import MilestoneTrack from "./MilestoneTrack";
 import { buildMilestoneTrack, statusColor } from "../schemaUtils";
+import { resolveCompletion } from "../statusFlow";
 
 const BADGE = {
   green: "bg-track-done/15 text-track-done",
@@ -8,7 +9,7 @@ const BADGE = {
   gray: "bg-muted/15 text-muted",
 };
 
-export default function LinksTable({ schema, links, onEdit, onDelete }) {
+export default function LinksTable({ schema, links, onSelect, onEdit, onDelete }) {
   if (!links.length) {
     return (
       <div className="rounded-lg border border-dashed border-line px-6 py-14 text-center text-muted">
@@ -26,6 +27,7 @@ export default function LinksTable({ schema, links, onEdit, onDelete }) {
             <th className="px-3 py-2.5 font-medium">HOP</th>
             <th className="px-3 py-2.5 font-medium">Site A → Site B</th>
             <th className="px-3 py-2.5 font-medium">Status</th>
+            <th className="px-3 py-2.5 font-medium">Situação</th>
             <th className="px-3 py-2.5 font-medium">Owner</th>
             <th className="px-3 py-2.5 font-medium">Pipeline</th>
             <th className="px-3 py-2.5 font-medium text-right">Ações</th>
@@ -35,10 +37,12 @@ export default function LinksTable({ schema, links, onEdit, onDelete }) {
           {links.map((link) => {
             const color = statusColor(link.preliminary_status);
             const track = buildMilestoneTrack(schema, link);
+            const completion = resolveCompletion(link);
             return (
               <tr
                 key={link.id}
-                className="border-b border-line/60 last:border-0 hover:bg-surface/60"
+                onClick={() => onSelect(link)}
+                className="cursor-pointer border-b border-line/60 last:border-0 hover:bg-surface/60"
               >
                 <td className="px-3 py-2.5 font-mono text-ink">{link.tim_key || "—"}</td>
                 <td className="px-3 py-2.5 font-mono text-muted">{link.hop || "—"}</td>
@@ -50,19 +54,46 @@ export default function LinksTable({ schema, links, onEdit, onDelete }) {
                     {link.preliminary_status || "Sem status"}
                   </span>
                 </td>
+                <td className="px-3 py-2.5">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        completion.completed
+                          ? "bg-track-done/15 text-track-done"
+                          : "bg-track-planned/15 text-track-planned"
+                      }`}
+                    >
+                      {completion.label}
+                    </span>
+                    {completion.inconsistent && (
+                      <span
+                        className="cursor-help text-[13px] text-status-hold"
+                        title="Status Detail já passou de 06.0-Pending SSR sem a data de PPI Customer Approval — Realizado preenchida."
+                      >
+                        ⚠
+                      </span>
+                    )}
+                  </span>
+                </td>
                 <td className="px-3 py-2.5 text-muted">{link.owner || "—"}</td>
                 <td className="px-3 py-2.5">
                   <MilestoneTrack track={track} />
                 </td>
                 <td className="px-3 py-2.5 text-right">
                   <button
-                    onClick={() => onEdit(link)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEdit(link);
+                    }}
                     className="mr-3 text-muted hover:text-accent"
                   >
                     Editar
                   </button>
                   <button
-                    onClick={() => onDelete(link.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(link.id);
+                    }}
                     className="text-muted hover:text-status-hold"
                   >
                     Excluir

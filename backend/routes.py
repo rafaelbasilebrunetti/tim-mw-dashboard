@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from database import TABLE_NAME, get_connection
 from models import LinkCreate, LinkOut
 from schema_loader import load_schema
+from site_reference import lookup_site
 
 router = APIRouter(prefix="/api")
 
@@ -83,6 +84,53 @@ def update_link(link_id: int, link: LinkCreate):
     )
     conn.commit()
     row = conn.execute(f"SELECT * FROM {TABLE_NAME} WHERE id = ?", (link_id,)).fetchone()
+    conn.close()
+    return dict(row)
+
+
+@router.post("/links/{link_id}/enrich-reference", response_model=LinkOut)
+def enrich_link_site_reference(link_id: int):
+    """
+    Preenche automaticamente os campos de Site A / Site B que estiverem
+    vazios (end_id, infra_type, município, detentora, lat, long) usando
+    a planilha de referência externa (ver site_reference.py). Só grava
+    em campos vazios - nunca sobrescreve um valor já existente no site.
+    Não falha se a planilha não existir ou o site não for encontrado
+    nela (ver lookup_site) - nesse caso simplesmente não altera nada.
+    """
+    conn = get_connection()
+    row = conn.execute(f"SELECT * FROM {TABLE_NAME} WHERE id = ?", (link_id,)).fetchone()
+    if row is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Link não encontrado")
+
+    record = dict(row)
+    updates = {}
+    for suffix in ("a", "b"):
+        reference = lookup_site(record.get(f"site_{suffix}"))
+        if not reference.get("found"):
+            continue
+        field_values = {
+            f"end_id_{suffix}": reference.get("end_id"),
+            f"infra_type_{suffix}": reference.get("infra_type"),
+            f"municipio_{suffix}": reference.get("municipio"),
+            f"detentora_{suffix}": reference.get("detentora"),
+            f"lat_{suffix}": reference.get("lat"),
+            f"long_{suffix}": reference.get("long"),
+        }
+        for field, value in field_values.items():
+            if value is not None and record.get(field) in (None, ""):
+                updates[field] = value
+
+    if updates:
+        set_clause = ", ".join(f'"{k}" = ?' for k in updates.keys())
+        conn.execute(
+            f'UPDATE {TABLE_NAME} SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+            list(updates.values()) + [link_id],
+        )
+        conn.commit()
+        row = conn.execute(f"SELECT * FROM {TABLE_NAME} WHERE id = ?", (link_id,)).fetchone()
+
     conn.close()
     return dict(row)
 
