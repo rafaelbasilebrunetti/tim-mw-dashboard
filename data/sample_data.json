@@ -1,0 +1,16 @@
+{
+  "metrics": [
+    { "title": "Usuários Ativos", "value": 1240, "unit": "" },
+    { "title": "Receita Mensal", "value": 58900, "unit": "R$" },
+    { "title": "Taxa de Conversão", "value": 3.2, "unit": "%" },
+    { "title": "Tickets Abertos", "value": 17, "unit": "" }
+  ],
+  "series": [
+    { "label": "Jan", "value": 320 },
+    { "label": "Fev", "value": 410 },
+    { "label": "Mar", "value": 380 },
+    { "label": "Abr", "value": 450 },
+    { "label": "Mai", "value": 520 },
+    { "label": "Jun", "value": 610 }
+  ]
+}

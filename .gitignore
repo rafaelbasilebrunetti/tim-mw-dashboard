@@ -1,0 +1,44 @@
+# ============================================
+# DADOS - nunca sobem pro GitHub (info sensível
+# de rede/infraestrutura da TIM)
+# ============================================
+data/*.db
+data/*.xlsx
+data/*.xls
+data/*.csv
+!config/templates/*.csv
+config/templates/column_mapping.json
+
+# ============================================
+# Python
+# ============================================
+backend/__pycache__/
+backend/**/__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# ============================================
+# Segredos (senha do dashboard, chave de sessão)
+# ============================================
+backend/.env
+.env
+!.env.example
+!backend/.env.example
+
+# ============================================
+# Node / React
+# ============================================
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+npm-debug.log*
+
+# ============================================
+# Editor / SO
+# ============================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
