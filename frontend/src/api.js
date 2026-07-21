@@ -35,6 +35,7 @@ export const api = {
     }).then(handle),
 
   getSchema: () => fetch(`${BASE_URL}/schema`, { credentials: "include" }).then(handle),
+  getStageFlow: () => fetch(`${BASE_URL}/stage-flow`, { credentials: "include" }).then(handle),
   getLinks: () => fetch(`${BASE_URL}/links`, { credentials: "include" }).then(handle),
   getLink: (id) => fetch(`${BASE_URL}/links/${id}`, { credentials: "include" }).then(handle),
   enrichSiteReference: (id) =>
@@ -57,6 +58,13 @@ export const api = {
     fetch(`${BASE_URL}/links/${id}`, {
       method: "DELETE",
       credentials: "include",
+    }).then(handle),
+  transitionLink: (id, payload) =>
+    fetch(`${BASE_URL}/links/${id}/transition`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     }).then(handle),
 
   importFile: (file, { upsert = false } = {}) => {

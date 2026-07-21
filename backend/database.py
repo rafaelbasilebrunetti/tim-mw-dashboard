@@ -76,6 +76,19 @@ def create_table(force_recreate: bool = False):
     )
     """
     cur.execute(create_stmt)
+
+    # Migração leve: CREATE TABLE IF NOT EXISTS não adiciona colunas a uma
+    # tabela que já existia com um schema mais antigo (ex: CSV ganhou uma
+    # coluna nova depois que o banco já tinha sido criado). Sem isso, todo
+    # INSERT/UPDATE que referenciar o campo novo falharia com "no such
+    # column" - aqui só adicionamos o que falta, nunca tocamos em dado
+    # existente.
+    existing_cols = {row["name"] for row in cur.execute(f"PRAGMA table_info({TABLE_NAME})").fetchall()}
+    for field in schema:
+        if field["internal_name"] not in existing_cols:
+            col_type = TYPE_MAP.get(field["type"], "TEXT")
+            cur.execute(f'ALTER TABLE {TABLE_NAME} ADD COLUMN "{field["internal_name"]}" {col_type}')
+
     conn.commit()
     conn.close()
 

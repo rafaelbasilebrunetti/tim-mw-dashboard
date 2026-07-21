@@ -17,17 +17,24 @@ function FieldValue({ field, value }) {
   );
 }
 
-export default function SiteDetailModal({ schema, link, onEdit, onClose, onEnriched }) {
+export default function SiteDetailModal({ schema, link, onEdit, onTransition, onClose, onEnriched }) {
   const groups = groupSchema(schema);
   const [displayLink, setDisplayLink] = useState(link);
   const completion = resolveCompletion(displayLink);
 
+  // Mantém displayLink em dia sempre que o registro mudar por fora (ex:
+  // depois de uma transição de etapa feita no StageTransitionModal) - não
+  // só na primeira renderização de um site diferente.
   useEffect(() => {
     setDisplayLink(link);
+  }, [link]);
+
+  useEffect(() => {
     let cancelled = false;
     // Preenche automaticamente os campos vazios de Site A/B (End ID,
     // Infra Type, Município, Detentora, Lat, Long) com a planilha de
-    // referência - nunca sobrescreve o que já estiver preenchido.
+    // referência - nunca sobrescreve o que já estiver preenchido. Só
+    // roda uma vez por site (id), não a cada atualização do registro.
     api
       .enrichSiteReference(link.id)
       .then((updated) => {
@@ -55,6 +62,12 @@ export default function SiteDetailModal({ schema, link, onEdit, onClose, onEnric
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => onTransition(displayLink)}
+              className="rounded-md border border-line px-3 py-1.5 text-[13px] text-muted hover:text-ink"
+            >
+              Mudar etapa
+            </button>
             <button
               onClick={() => onEdit(displayLink)}
               className="rounded-md border border-line px-3 py-1.5 text-[13px] text-muted hover:text-ink"

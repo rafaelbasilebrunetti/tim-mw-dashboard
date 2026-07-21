@@ -41,6 +41,18 @@ function extractMainCode(text) {
 }
 
 /**
+ * Extrai um código de sub-etapa válido (ex: "02.3") do início de um
+ * texto, ou null se não bater com nenhum código conhecido de
+ * STATUS_DETAILS. Usado pelo modal de transição de etapa para resolver
+ * a etapa atual/anterior de um site a partir dos campos crus.
+ */
+export function extractCode(text) {
+  const match = /^(\d{2}\.\d)/.exec(String(text || "").trim());
+  const code = match ? match[1] : null;
+  return code && STATUS_DETAILS.some((d) => d.code === code) ? code : null;
+}
+
+/**
  * Resolve a posição de um site no fluxo de status a partir dos campos
  * crus (preliminary_status / preliminary_status_detail). Os dados reais
  * às vezes têm um código de sub-etapa (ex: "04.0-PPI Hold") direto no

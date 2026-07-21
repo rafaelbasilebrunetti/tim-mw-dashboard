@@ -8,11 +8,13 @@ import ChangePasswordModal from "./components/ChangePasswordModal";
 import SiteDetailModal from "./components/SiteDetailModal";
 import QuickAddModal from "./components/QuickAddModal";
 import ImportModal from "./components/ImportModal";
+import StageTransitionModal from "./components/StageTransitionModal";
 
 export default function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [schema, setSchema] = useState([]);
+  const [stageFlow, setStageFlow] = useState(null);
   const [links, setLinks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -22,6 +24,7 @@ export default function App() {
   const [selectedLink, setSelectedLink] = useState(null);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [transitionRecord, setTransitionRecord] = useState(null); // null = fechado, {...} = mudar etapa
 
   useEffect(() => {
     api
@@ -35,9 +38,14 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      const [schemaRes, linksRes] = await Promise.all([api.getSchema(), api.getLinks()]);
+      const [schemaRes, linksRes, stageFlowRes] = await Promise.all([
+        api.getSchema(),
+        api.getLinks(),
+        api.getStageFlow(),
+      ]);
       setSchema(schemaRes);
       setLinks(linksRes);
+      setStageFlow(stageFlowRes);
     } catch (err) {
       if (err.status === 401) {
         setAuthenticated(false);
@@ -69,6 +77,13 @@ export default function App() {
     if (!confirm("Excluir este link permanentemente?")) return;
     await api.deleteLink(id);
     await loadAll();
+  }
+
+  async function handleTransition(payload) {
+    const updated = await api.transitionLink(transitionRecord.id, payload);
+    setTransitionRecord(null);
+    setLinks((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
+    setSelectedLink((prev) => (prev && prev.id === updated.id ? updated : prev));
   }
 
   async function handleQuickAdd(payload) {
@@ -195,10 +210,20 @@ export default function App() {
             setSelectedLink(null);
             setModalRecord(link);
           }}
+          onTransition={(link) => setTransitionRecord(link)}
           onClose={() => setSelectedLink(null)}
           onEnriched={(updated) =>
             setLinks((prev) => prev.map((l) => (l.id === updated.id ? updated : l)))
           }
+        />
+      )}
+
+      {transitionRecord && stageFlow && (
+        <StageTransitionModal
+          stageFlow={stageFlow}
+          link={transitionRecord}
+          onTransition={handleTransition}
+          onClose={() => setTransitionRecord(null)}
         />
       )}
 
