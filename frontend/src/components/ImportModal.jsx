@@ -82,6 +82,15 @@ export default function ImportModal({ onImported, onClose }) {
                 <div>{report.skipped_empty} linha(s) vazia(s) ignorada(s)</div>
               </div>
 
+              {report.spreadsheet_saved === false && (
+                <div className="rounded-lg border border-status-hold/40 bg-status-hold/10 px-4 py-3 text-[13px] text-status-hold">
+                  Atenção: os dados foram gravados no banco, mas a planilha principal
+                  (seu_controle.xlsx) NÃO pôde ser atualizada ({report.spreadsheet_error}).
+                  Feche o arquivo se estiver aberto no Excel e refaça a importação, ou
+                  a próxima edição feita pela interface tentará gravar de novo.
+                </div>
+              )}
+
               {(report.unmatched_file_columns?.length > 0 || report.unmatched_schema_fields?.length > 0) && (
                 <div className="rounded-lg border border-accent/40 bg-accent/10 px-4 py-3 text-[12px] text-accent">
                   {report.unmatched_file_columns?.length > 0 && (

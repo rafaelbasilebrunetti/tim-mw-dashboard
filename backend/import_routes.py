@@ -12,9 +12,10 @@ import io
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from openpyxl import load_workbook
 
-from database import get_connection
+from database import fetch_all_records, get_connection
 from import_data import build_column_mapping, process_rows, read_rows_from_workbook
 from schema_loader import load_schema
+from spreadsheet_store import SpreadsheetWriteError, write_records
 
 router = APIRouter(prefix="/api")
 
@@ -57,6 +58,16 @@ def import_links(file: UploadFile = File(...), upsert: bool = Form(False)):
     conn = get_connection()
     try:
         report = process_rows(file_headers, data_rows, schema, conn, dry_run=False, upsert=upsert)
+        # process_rows já dá commit no que foi importado; a gravação na
+        # planilha principal acontece à parte (melhor esforço) - se falhar,
+        # os dados já estão no banco, mas o front é avisado para tentar de
+        # novo (ex: reabrindo a planilha se estiver travada no Excel).
+        try:
+            write_records(fetch_all_records(conn, schema), schema)
+            report["spreadsheet_saved"] = True
+        except SpreadsheetWriteError as exc:
+            report["spreadsheet_saved"] = False
+            report["spreadsheet_error"] = str(exc)
     finally:
         conn.close()
 

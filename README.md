@@ -11,7 +11,7 @@ interface web para consultar, editar e importar registros.
 backend/     API em Python (FastAPI) + banco SQLite
 frontend/    Interface web em React
 config/      Template CSV que define o padrão de campos (schema)
-data/        Banco de dados local (NÃO versionado no Git)
+data/        Banco de dados, planilha principal e backups (NÃO versionado no Git)
 ```
 
 ## Como rodar localmente
@@ -80,6 +80,55 @@ python import_data.py "../data/seu_controle.xlsx" --upsert
 
 Veja `config/templates/README.md` para detalhes sobre como editar o
 padrão (schema) de campos.
+
+## Persistência: como os dados são salvos
+
+O dashboard tem duas camadas de armazenamento, mantidas sempre sincronizadas:
+
+- **`data/dashboard.db`** (SQLite) — é o que a API lê e escreve a cada
+  requisição (rápido, com índices, é o "motor" do dashboard).
+- **`data/seu_controle.xlsx`** — é a planilha "viva": a mesma que serve de
+  controle do projeto, sempre com os dados atualizados, para abrir e
+  conferir fora do app se precisar.
+
+**Toda alteração feita pela interface** (criar site, editar qualquer campo,
+excluir, ou o preenchimento automático de Site A/B via planilha de
+referência) faz duas coisas, na mesma operação:
+
+1. Grava no banco (`dashboard.db`).
+2. Regrava a planilha inteira (`seu_controle.xlsx`) a partir do estado
+   atual do banco — por isso um site novo cadastrado pela tela "+ Adicionar
+   Site" aparece como uma linha nova na planilha, com exatamente as mesmas
+   colunas dos registros que já existiam.
+
+**Ao subir o backend**, ele relê `seu_controle.xlsx` e mescla o conteúdo no
+banco (por TIM Key) — ou seja, a planilha é a fonte "viva": se o arquivo do
+banco for perdido, apagado ou corrompido, o app reconstrói os dados a
+partir dela.
+
+**Proteção contra corrupção:** a planilha nunca é editada célula a célula.
+A cada gravação, o app monta o arquivo novo do zero num arquivo temporário
+e só troca pelo arquivo original (`os.replace`, operação atômica) depois
+que essa escrita termina sem erro — então uma queda de energia ou erro no
+meio do processo nunca deixa `seu_controle.xlsx` corrompido ou pela metade.
+
+**Backups automáticos:** antes de cada substituição, a versão anterior da
+planilha é copiada para `data/backups/`, com o nome
+`seu_controle_AAAAMMDD_HHMMSS.xlsx`. As últimas 30 cópias são mantidas;
+backups mais antigos são apagados automaticamente. Essa pasta não é
+versionada no Git (mesma regra dos outros dados).
+
+**Se a gravação falhar** (por exemplo, o arquivo `seu_controle.xlsx` estiver
+aberto no Excel, disco cheio, ou permissão negada), a alteração é **desfeita
+por completo** — nada fica salvo só no banco sem refletir na planilha — e a
+interface mostra uma mensagem de erro explícita, para nunca dar a entender
+que algo foi salvo quando na verdade não foi. Nesse caso, feche o arquivo
+no Excel (ou resolva a causa do erro) e tente salvar de novo.
+
+A importação em massa (botão "Importar Dados") também atualiza a planilha
+principal depois de importar; se esse passo falhar, os dados já importados
+continuam no banco e o relatório da tela avisa que a planilha ainda não
+reflete a importação.
 
 ## Planilha de referência de sites (preenchimento automático)
 

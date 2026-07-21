@@ -36,6 +36,19 @@ def get_connection():
     return conn
 
 
+def fetch_all_records(conn, schema):
+    """
+    Devolve todas as linhas da tabela, uma lista de dicts com só os campos
+    do schema (sem id/updated_at), na ordem de criação. Lê pela mesma
+    conexão recebida, então também enxerga alterações ainda não commitadas
+    (usado para regravar a planilha principal antes do commit - ver
+    spreadsheet_store.write_records).
+    """
+    rows = conn.execute(f"SELECT * FROM {TABLE_NAME} ORDER BY id ASC").fetchall()
+    names = [field["internal_name"] for field in schema]
+    return [{name: row[name] for name in names} for row in rows]
+
+
 def create_table(force_recreate: bool = False):
     """
     Cria a tabela 'links' com uma coluna para cada campo do schema,

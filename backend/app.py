@@ -15,9 +15,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from auth import require_auth
 from auth import router as auth_router
-from database import create_table
+from database import create_table, get_connection
 from import_routes import router as import_router
 from routes import router
+from spreadsheet_store import sync_from_spreadsheet
 
 app = FastAPI(title="TIM MW Report Dashboard API")
 
@@ -45,6 +46,14 @@ app.include_router(import_router, dependencies=[Depends(require_auth)])
 @app.on_event("startup")
 def on_startup():
     create_table()
+    # A planilha principal (data/seu_controle.xlsx) é a fonte "viva" dos
+    # dados: relê e mescla (por TIM Key) no banco a cada subida, para
+    # nunca perder alterações feitas nela fora do app (ver spreadsheet_store.py).
+    conn = get_connection()
+    try:
+        sync_from_spreadsheet(conn)
+    finally:
+        conn.close()
 
 
 @app.get("/")
