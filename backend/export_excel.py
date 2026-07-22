@@ -27,6 +27,7 @@ carimbar o estilo das células de dados.
 import datetime as dt
 import io
 import os
+import re
 
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment, Border, Font, Side
@@ -46,6 +47,37 @@ DATA_FONT = Font(name="Calibri", size=11)
 DATA_ALIGNMENT = Alignment(horizontal="center", vertical="center")
 DATA_BORDER = Border(bottom=Side(style="thin"))
 DATE_FORMAT = "dd/mm/yyyy"
+TEXT_FORMAT = "@"
+
+# Regra do processo: TIM KEY sempre em xxxx.xxxxxx. A base tem valores
+# quebrados porque o Excel trata a chave como número e descarta zeros à
+# DIREITA ("2025.000610" vira "2025.00061"). Só zeros podem ter sido
+# perdidos, então completar com zeros à direita reconstrói o valor exato.
+# A DU Virtual segue o mesmo padrão, preservando o sufixo .LD_x criado
+# a cada LOS Block. As duas células saem com formato TEXTO ("@") para o
+# Excel nunca mais corromper esses valores.
+_KEY_PATTERN = re.compile(r"^(\d{4})(?:[.,](\d{1,6}))?$")
+_LD_SUFFIX = re.compile(r"^(.*?)\.(LD_\d+)$", re.IGNORECASE)
+KEY_FIELDS = {"tim_key", "du_id_virtual"}
+
+
+def format_tim_key(raw):
+    text = str(raw or "").strip()
+    match = _KEY_PATTERN.match(text)
+    if not match:
+        return text
+    year, fraction = match.group(1), match.group(2) or ""
+    return f"{year}.{fraction.ljust(6, '0')}"
+
+
+def format_du_virtual(raw):
+    text = str(raw or "").strip()
+    if not text:
+        return text
+    match = _LD_SUFFIX.match(text)
+    if match:
+        return f"{format_tim_key(match.group(1))}.{match.group(2).upper()}"
+    return format_tim_key(text)
 
 
 class ExportError(Exception):
@@ -62,6 +94,9 @@ def _cell_value(record, field):
     value = record.get(field["internal_name"])
     if value is None or value == "":
         return None
+
+    if field["internal_name"] in KEY_FIELDS:
+        return (format_tim_key if field["internal_name"] == "tim_key" else format_du_virtual)(value)
 
     if field["type"] == "date" and isinstance(value, str):
         try:
@@ -108,6 +143,8 @@ def build_workbook(records, schema):
             cell.border = DATA_BORDER
             if field["type"] == "date":
                 cell.number_format = DATE_FORMAT
+            elif field["internal_name"] in KEY_FIELDS:
+                cell.number_format = TEXT_FORMAT
 
     # O filtro do template cobre só a linha de título; estende para os dados.
     last_column = get_column_letter(len(ordered_fields))

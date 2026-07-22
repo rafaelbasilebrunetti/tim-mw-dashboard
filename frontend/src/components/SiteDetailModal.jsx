@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { resolveCompletion, mainLabelForDetailCode, resolveOwner, extractCode } from "../statusFlow";
 import StatusFlow from "./StatusFlow";
+import DetailStatusTrack from "./DetailStatusTrack";
 import RemarkModal from "./RemarkModal";
+import SwapSiteBModal from "./SwapSiteBModal";
 import PipelineModal from "./PipelineModal";
+import { formatDateBR } from "../statusFlow";
 
 /** Uma célula rótulo/valor simples, usada nos layouts fixos abaixo. */
 function Field({ label, value, mono = true }) {
@@ -19,10 +22,63 @@ function SectionTitle({ children }) {
   return <h3 className="mb-3 text-[13px] font-medium uppercase tracking-wide text-accent">{children}</h3>;
 }
 
-export default function SiteDetailModal({ link, onEdit, onTransition, onClose, onEnriched }) {
+/**
+ * Tabela com TODAS as datas do cronograma (pares Planejado/Realizado do
+ * schema, na ordem da planilha). É o "todas as datas voltam a aparecer
+ * no final do detalhamento" - a trilha lá em cima mostra só as datas das
+ * etapas passadas; aqui fica o quadro completo, inclusive planejados.
+ */
+function MilestoneDatesTable({ schema, link }) {
+  // Agrupa preservando a ordem de aparição na planilha.
+  const groups = [];
+  const byName = new Map();
+  for (const field of [...schema].sort((a, b) => a.index - b.index)) {
+    if (!field.milestone_group) continue;
+    if (!byName.has(field.milestone_group)) {
+      const group = { name: field.milestone_group, planned: null, realized: null };
+      byName.set(field.milestone_group, group);
+      groups.push(group);
+    }
+    byName.get(field.milestone_group)[field.role] = field.internal_name;
+  }
+
+  if (!groups.length) return <p className="text-[13px] text-muted">Sem colunas de cronograma no schema.</p>;
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-line">
+      <table className="w-full border-collapse text-left text-[13px]">
+        <thead>
+          <tr className="bg-base text-[11px] uppercase tracking-wide text-muted">
+            <th className="px-3 py-2 font-medium">Etapa</th>
+            <th className="px-3 py-2 font-medium">Planejado</th>
+            <th className="px-3 py-2 font-medium">Realizado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map((group) => {
+            const planned = group.planned ? link[group.planned] : null;
+            const realized = group.realized ? link[group.realized] : null;
+            return (
+              <tr key={group.name} className="border-t border-line/60">
+                <td className="px-3 py-2 text-ink">{group.name}</td>
+                <td className="px-3 py-2 font-mono text-muted">{planned ? formatDateBR(planned) : "—"}</td>
+                <td className={`px-3 py-2 font-mono ${realized ? "text-track-done" : "text-muted"}`}>
+                  {realized ? formatDateBR(realized) : "—"}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default function SiteDetailModal({ schema = [], link, onEdit, onTransition, onClose, onEnriched }) {
   const [displayLink, setDisplayLink] = useState(link);
   const [showRemarks, setShowRemarks] = useState(false);
   const [showPipeline, setShowPipeline] = useState(false);
+  const [showSwapB, setShowSwapB] = useState(false);
   const completion = resolveCompletion(displayLink);
 
   // Mantém displayLink em dia sempre que o registro mudar por fora (ex:
@@ -134,6 +190,13 @@ export default function SiteDetailModal({ link, onEdit, onTransition, onClose, o
               </div>
             </div>
             <StatusFlow mainStatus={displayLink.preliminary_status} detailStatus={displayLink.preliminary_status_detail} />
+
+            <div className="mt-4 border-t border-line/60 pt-4">
+              <h3 className="mb-3 text-center text-[13px] font-medium uppercase tracking-wide text-accent">
+                Preliminary Status Detail
+              </h3>
+              <DetailStatusTrack link={displayLink} onChanged={handleRemarkSaved} onSwapSiteB={() => setShowSwapB(true)} />
+            </div>
           </div>
 
           {/* ---------- Identificação (ordem fixa) ---------- */}
@@ -231,6 +294,12 @@ export default function SiteDetailModal({ link, onEdit, onTransition, onClose, o
               )}
             </div>
           </fieldset>
+
+          {/* ---------- Cronograma: todas as datas, no fim ---------- */}
+          <fieldset className="mb-2">
+            <SectionTitle>Cronograma — Todas as Datas</SectionTitle>
+            <MilestoneDatesTable schema={schema} link={displayLink} />
+          </fieldset>
         </div>
       </div>
 
@@ -239,6 +308,14 @@ export default function SiteDetailModal({ link, onEdit, onTransition, onClose, o
       )}
 
       {showPipeline && <PipelineModal onClose={() => setShowPipeline(false)} />}
+
+      {showSwapB && (
+        <SwapSiteBModal
+          link={displayLink}
+          onClose={() => setShowSwapB(false)}
+          onDone={(updated) => updated && handleRemarkSaved(updated)}
+        />
+      )}
     </div>
   );
 }

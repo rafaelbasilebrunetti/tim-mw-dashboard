@@ -1,3 +1,5 @@
+import { normalizeRecord } from "./timKey";
+
 const BASE_URL = "http://localhost:8000/api";
 
 async function handle(res) {
@@ -8,7 +10,12 @@ async function handle(res) {
     error.status = res.status;
     throw error;
   }
-  return data;
+  // Fronteira única de normalização: toda TIM Key / DU Virtual que entra
+  // na dashboard já chega no padrão xxxx.xxxxxx (ver timKey.js). Assim
+  // tabela, filtros, busca, detalhe e export CSV não precisam se
+  // preocupar com valores quebrados pelo Excel.
+  if (Array.isArray(data)) return data.map(normalizeRecord);
+  return normalizeRecord(data);
 }
 
 export const api = {

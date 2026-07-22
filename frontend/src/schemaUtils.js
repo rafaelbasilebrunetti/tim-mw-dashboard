@@ -17,6 +17,7 @@ export const MILESTONE_ORDER = [
 // FieldInput.jsx para decidir entre <select> e <input>.
 export const SELECT_OPTIONS = {
   supplier: ["BEHIVE", "PROTENG", "CELPLAN"],
+  los_result: ["Prospection", "Simulation", "Block"],
 };
 
 // Campos removidos da dashboard (pedido do processo): continuam existindo

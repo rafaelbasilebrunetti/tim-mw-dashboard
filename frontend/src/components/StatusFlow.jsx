@@ -13,7 +13,8 @@ export default function StatusFlow({ mainStatus, detailStatus }) {
 
   return (
     <div>
-      <div className="flex overflow-x-auto pb-1">
+      <div className="overflow-x-auto pb-1">
+        <div className="mx-auto flex w-max">
         {MAIN_STEPS.map((step, i) => {
           const state =
             mainIndex < 0 ? "future" : i < mainIndex ? "done" : i === mainIndex ? "current" : "future";
@@ -57,6 +58,7 @@ export default function StatusFlow({ mainStatus, detailStatus }) {
             </div>
           );
         })}
+        </div>
       </div>
       {mainIndex < 0 && (
         <p className="mt-2 text-[11px] text-muted">

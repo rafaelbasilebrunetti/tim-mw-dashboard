@@ -131,3 +131,129 @@ export function resolveCompletion(link) {
     inconsistent: !hasApprovalDate && pastThreshold,
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* Trilha detalhada (Preliminary Status Detail)                        */
+/* ------------------------------------------------------------------ */
+
+// Sub-etapas de interrupção: NÃO aparecem como nós da trilha detalhada.
+// Cada uma vira um marcador de parada + um chip para marcar/desmarcar.
+export const HOLD_DETAIL_CODES = ["00.0", "00.1", "03.0", "04.0", "06.1"];
+
+// Ordem dos nós da trilha detalhada (fluxo normal, sem interrupções).
+export const DETAIL_TRACK = [
+  "01.1", "01.2", "02.1", "02.2", "02.3", "02.4",
+  "03.1", "03.2", "03.3", "04.1", "05.1", "06.0", "06.2",
+];
+
+// Etapas que só existem no caminho COM ida a campo (resultado do LOS =
+// Prospection). Quando o resultado é Simulation, o fluxograma pula essas
+// etapas (TSSR Execution, sem visita) e a trilha as esconde.
+export const FIELD_ONLY_CODES = new Set(["03.1", "03.2"]);
+
+export const LOS_RESULT_OPTIONS = ["Prospection", "Simulation", "Block"];
+
+// Onde cada interrupção "encaixa" na trilha: o marcador de parada entra
+// no lugar da etapa indicada (tudo antes dela fica concluído).
+// Ex. do processo: "PPI Hold mostra todas as etapas até o 04.0".
+const HOLD_STOP_AT = { "03.0": "03.1", "04.0": "04.1", "06.1": "06.2" };
+
+// Datas mostradas embaixo de cada nó quando a etapa foi PASSADA.
+// Mapeamento definido pelo processo (colunas AU..BT da planilha):
+export const DETAIL_DATE_FIELDS = {
+  "01.1": [{ field: "po_date", label: "PO Date" }],
+  "01.2": [{ field: "du_creation", label: "DU Creation" }],
+  "02.1": [
+    { field: "sar_pe_pta", label: "SAR/PE PTA" },
+    { field: "sar_pe_ptb", label: "SAR/PE PTB" },
+  ],
+  "02.2": [{ field: "los_simulation_r", label: "LOS Simulation" }],
+  "02.3": [], // sem data
+  "02.4": [{ field: "ld_r", label: "LD" }],
+  "03.1": [{ field: "survey_on_field_r", label: "Survey on Field" }],
+  "03.2": [
+    { field: "tssr_supplier_r", label: "TSSR Supplier" },
+    { field: "los_report_supplier_r", label: "LOS Report" },
+  ],
+  "03.3": [{ field: "los_analysis_r", label: "LOS Analysis" }],
+  "04.1": [{ field: "ppi_r", label: "PPI" }],
+  "05.1": [{ field: "ppi_customer_approval_r", label: "PPI Approval" }],
+  "06.0": [
+    { field: "ssr_pta_r", label: "SSR PTA" },
+    { field: "ssr_ptb_r", label: "SSR PTB" },
+  ],
+  "06.2": [],
+};
+
+/** "2026-02-21" -> "21/02/2026"; qualquer outro texto sai como está. */
+export function formatDateBR(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || "").trim());
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : String(value || "").trim();
+}
+
+export function detailLabelOf(code) {
+  const detail = STATUS_DETAILS.find((d) => d.code === code);
+  return detail ? `${detail.code}-${detail.label}` : code;
+}
+
+/**
+ * Monta a trilha detalhada de um site:
+ *   nodes:    [{ code, label, state: done|current|future, dates:[{label,value}] }]
+ *   holdStop: { code, label, atIndex } quando a etapa atual é uma
+ *             interrupção - o marcador entra em atIndex e a trilha para ali
+ *   losResult / fieldSkipped: estado da bifurcação do fluxograma
+ *
+ * As datas só são preenchidas em etapas passadas (done) - regra do
+ * processo: "as datas devem aparecer apenas quando a etapa é passada".
+ */
+export function buildDetailTrack(link) {
+  const losResult = String(link.los_result || "").trim();
+  const fieldSkipped = losResult === "Simulation";
+  const codes = DETAIL_TRACK.filter((c) => !(fieldSkipped && FIELD_ONLY_CODES.has(c)));
+
+  const currentCode =
+    extractCode(link.preliminary_status_detail) || extractCode(link.preliminary_status);
+  const isHold = Boolean(currentCode) && HOLD_DETAIL_CODES.includes(currentCode);
+
+  // Etapa de referência: onde a trilha "está". Para interrupções, é a
+  // etapa em cujo lugar o marcador de parada entra.
+  let refCode = currentCode;
+  if (isHold) {
+    refCode =
+      currentCode === "00.0" || currentCode === "00.1"
+        ? extractCode(link.previous_status_detail)
+        : HOLD_STOP_AT[currentCode];
+  }
+
+  // Se a etapa de referência não está visível (ex: 03.1 escondida no
+  // caminho Simulation), ancora na próxima etapa visível do fluxo.
+  let refIndex = refCode ? codes.indexOf(refCode) : -1;
+  if (refCode && refIndex === -1) {
+    refIndex = codes.findIndex((c) => c > refCode);
+    if (refIndex === -1) refIndex = codes.length;
+  }
+
+  const nodes = codes.map((code, i) => {
+    let state = "future";
+    if (refIndex >= 0) {
+      if (i < refIndex) state = "done";
+      else if (i === refIndex && !isHold) state = "current";
+    }
+    const dates =
+      state === "done" || state === "current"
+        ? (DETAIL_DATE_FIELDS[code] || [])
+            .map(({ field, label }) => ({ label, value: link[field] }))
+            .filter((d) => d.value)
+        : [];
+    return { code, label: detailLabelOf(code), state, dates };
+  });
+
+  return {
+    nodes,
+    holdStop: isHold
+      ? { code: currentCode, label: detailLabelOf(currentCode), atIndex: Math.max(refIndex, 0) }
+      : null,
+    losResult,
+    fieldSkipped,
+  };
+}
