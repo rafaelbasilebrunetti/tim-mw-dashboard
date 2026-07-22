@@ -5,6 +5,7 @@ Endpoints da API. Todos operam sobre a tabela dinâmica 'links'
 (ver database.py) cujas colunas vêm do schema (ver schema_loader.py).
 """
 
+from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -22,7 +23,15 @@ router = APIRouter(prefix="/api")
 
 class TransitionRequest(BaseModel):
     target_code: str
+    # Regra 2 (preenchimento retroativo): datas escolhidas pelo usuário para
+    # etapas PULADAS (fora a etapa de destino) - opcional, campo omitido fica em branco.
     retroactive_dates: dict[str, Optional[str]] = {}
+    # Regra 7 (etapa de destino "manual"): datas escolhidas pelo usuário -
+    # obrigatórias quando a etapa de destino exige (ex: 03.0 -> 03.1).
+    manual_dates: dict[str, str] = {}
+    # Regras 9/13 (etapa de destino "choice"): campo(s) da opção escolhida
+    # (ex: qual documento foi entregue) - a data gravada é sempre a de hoje.
+    choice_fields: list[str] = []
 
 
 def _persist_to_spreadsheet(conn, schema):
@@ -73,10 +82,18 @@ def transition_link(link_id: int, payload: TransitionRequest):
     é guardada em `previous_status_detail` para sugerir a retomada depois.
 
     Regra 2 - Ao sair do Hold/Cancelled ou avançar mais de um passo de
-    uma vez, as datas das etapas puladas (e da etapa final) podem ser
-    preenchidas retroativamente via `retroactive_dates` - campos fora do
-    conjunto permitido para essa transição são rejeitados (400), campos
-    omitidos ficam em branco (permitido, é uma escolha válida do usuário).
+    uma vez, as datas das etapas PULADAS (excluindo a etapa de destino)
+    podem ser preenchidas retroativamente via `retroactive_dates` - campos
+    fora do conjunto permitido para essa transição são rejeitados (400),
+    campos omitidos ficam em branco (permitido, é uma escolha válida do
+    usuário).
+
+    A etapa de DESTINO em si nunca usa `retroactive_dates`: se o requisito
+    dela for "auto", a data de hoje é gravada automaticamente; se for
+    "manual" ou "choice" (Regras 7, 9, 13), os valores obrigatórios vêm de
+    `manual_dates` / `choice_fields` e a ausência deles é rejeitada (400) -
+    o frontend deve ter aberto o modal correspondente antes de chamar esta
+    rota.
     """
     if payload.target_code not in stage_flow.DETAIL_BY_CODE:
         raise HTTPException(status_code=400, detail=f"Etapa '{payload.target_code}' desconhecida")
@@ -112,15 +129,49 @@ def transition_link(link_id: int, payload: TransitionRequest):
                 reference_code = current_code
 
             to_confirm = stage_flow.stages_to_confirm(reference_code, target_code)
-            allowed_fields = stage_flow.allowed_retroactive_fields(to_confirm)
+            skipped_codes = to_confirm[:-1]  # tudo menos a própria etapa de destino
+
+            allowed_fields = stage_flow.allowed_retroactive_fields(skipped_codes)
             for field, value in payload.retroactive_dates.items():
                 if field not in allowed_fields:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Campo '{field}' não é uma data válida para preencher nesta transição",
+                        detail=f"Campo '{field}' não é uma data retroativa válida para esta transição",
                     )
                 if value:
                     updates[field] = value
+
+            # Requisito da própria etapa de destino - só se aplica quando ela
+            # é de fato alcançada por este avanço (to_confirm não vazio; vazio
+            # = retrocesso/lateral, que não grava data nenhuma).
+            if to_confirm:
+                for req in stage_flow.target_requirements(target_code):
+                    if req["type"] == "auto":
+                        today = date.today().isoformat()
+                        for f in req["fields"]:
+                            updates[f["field"]] = today
+                    elif req["type"] == "manual":
+                        for f in req["fields"]:
+                            value = payload.manual_dates.get(f["field"])
+                            if not value:
+                                raise HTTPException(
+                                    status_code=400,
+                                    detail=f"Informe '{f['label']}' antes de mudar para a etapa "
+                                    f"'{stage_flow.format_detail(target_code)}'",
+                                )
+                            updates[f["field"]] = value
+                    elif req["type"] == "choice":
+                        valid_fields = {field for opt in req["options"] for field in opt["fields"]}
+                        chosen = [f for f in payload.choice_fields if f in valid_fields]
+                        if not chosen:
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"Responda '{req['label']}' antes de mudar para a etapa "
+                                f"'{stage_flow.format_detail(target_code)}'",
+                            )
+                        today = date.today().isoformat()
+                        for field in chosen:
+                            updates[field] = today
 
         updates["preliminary_status_detail"] = stage_flow.format_detail(target_code)
         updates["preliminary_status"] = stage_flow.format_main(target_code)

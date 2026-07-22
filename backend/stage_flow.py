@@ -71,11 +71,38 @@ HOLD_LIKE_CODES = HOLD_CODES | {"03.0", "04.0", "06.1"}
 SEQUENTIAL_CODES = [d["code"] for d in STATUS_DETAILS if d["code"] not in HOLD_CODES]
 
 
-def _single(field, label):
-    return {"type": "single", "field": field, "label": label}
+def _auto(fields):
+    """
+    Campo(s) gravado(s) automaticamente com a data atual do sistema ao
+    alcançar a etapa diretamente (sem pular nada) - não exige nenhuma
+    pergunta ao usuário. Quando a etapa é pulada (Regra 2), o mesmo campo
+    vira preenchimento retroativo opcional (ver allowed_retroactive_fields).
+    """
+    return {
+        "type": "auto",
+        "fields": [{"field": field, "label": label} for field, label in fields],
+    }
+
+
+def _manual(fields):
+    """
+    Campo(s) que exigem uma data escolhida pelo usuário (não a data atual
+    do sistema) - obrigatório antes de efetivar a transição quando a etapa
+    é o destino direto (ex: Regra 7 - datas de PO/campo pedidas em modal).
+    """
+    return {
+        "type": "manual",
+        "fields": [{"field": field, "label": label} for field, label in fields],
+    }
 
 
 def _choice(label, options):
+    """
+    Pergunta de múltipla escolha (ex: qual documento foi entregue) - a data
+    gravada para o(s) campo(s) da opção escolhida é sempre a data atual do
+    sistema, nunca escolhida pelo usuário. Cada lista de options deve
+    incluir uma opção "Ambos" cujo `fields` seja a união dos demais.
+    """
     return {
         "type": "choice",
         "label": label,
@@ -89,35 +116,46 @@ def _choice(label, options):
 # aguardando documento do cliente, aguardando aprovação para começar o
 # próximo passo) não entram neste dicionário.
 STAGE_DATE_REQUIREMENTS = {
-    "01.2": [_single("po_date", "PO DATE")],
-    "02.1": [_single("du_creation", "DU CREATION")],
-    "02.3": [_single("los_simulation_r", "LOS Simulation — Realizado")],
-    "03.1": [_single("ld_r", "LD — Realizado")],
-    "03.2": [
-        _single("survey_on_field_r", "Survey on Field — Realizado"),
-        _single("los_on_field_r", "LOS on Field — Realizado"),
-    ],
+    "01.2": [_auto([("po_date", "PO DATE")])],
+    "02.1": [_auto([("du_creation", "DU CREATION")])],
+    "02.2": [_auto([
+        ("sar_pe_pta", "SAR / PE PTA"),
+        ("sar_pe_ptb", "SAR / PE PTB"),
+    ])],
+    "02.3": [_auto([("los_simulation_r", "LOS Simulation — Realizado")])],
+    "03.0": [_auto([("ld_r", "LD — Realizado")])],
+    "03.1": [_manual([
+        ("pr_supplier", "Data de emissão da PO"),
+        ("survey_on_field_p", "Previsão de ida a campo"),
+    ])],
+    "03.2": [_auto([
+        ("survey_on_field_r", "Survey on Field — Realizado"),
+        ("los_on_field_r", "LOS on Field — Realizado"),
+    ])],
     "03.3": [
-        _choice("Documento entregue pelo fornecedor", [
-            ("LOS Report Supplier", ["los_report_supplier_r"]),
-            ("TSSR Supplier", ["tssr_supplier_r"]),
+        _choice("Qual documento foi entregue?", [
+            ("TSSR", ["tssr_supplier_r"]),
+            ("LOS", ["los_report_supplier_r"]),
+            ("Ambos", ["tssr_supplier_r", "los_report_supplier_r"]),
         ]),
     ],
-    "04.1": [
-        _choice("Análise concluída", [
-            ("LOS Analysis", ["los_analysis_r"]),
-            ("TSSR Analysis", ["tssr_analysis_r"]),
-        ]),
-    ],
-    "05.1": [_single("ppi_r", "PPI — Realizado")],
-    "06.0": [_single("ppi_customer_approval_r", "PPI Customer Approval — Realizado")],
+    "04.1": [_auto([("tssr_analysis_r", "TSSR Analysis — Realizado")])],
+    "05.1": [_auto([("ppi_r", "PPI — Realizado")])],
+    "06.0": [_auto([("ppi_customer_approval_r", "PPI Customer Approval — Realizado")])],
     "06.2": [
-        _choice("Documento SSR recebido", [
+        _choice("Qual documento foi entregue?", [
             ("SSR PTA", ["ssr_pta_r"]),
             ("SSR PTB", ["ssr_ptb_r"]),
+            ("Ambos", ["ssr_pta_r", "ssr_ptb_r"]),
         ]),
     ],
 }
+
+
+def _requirement_fields(req):
+    if req["type"] in ("auto", "manual"):
+        return {f["field"] for f in req["fields"]}
+    return {field for opt in req["options"] for field in opt["fields"]}
 
 
 def allowed_retroactive_fields(codes):
@@ -125,12 +163,15 @@ def allowed_retroactive_fields(codes):
     allowed = set()
     for code in codes:
         for req in STAGE_DATE_REQUIREMENTS.get(code, []):
-            if req["type"] == "single":
-                allowed.add(req["field"])
-            else:
-                for opt in req["options"]:
-                    allowed.update(opt["fields"])
+            allowed.update(_requirement_fields(req))
     return allowed
+
+
+def target_requirements(code):
+    """Requisitos (auto/manual/choice) da própria etapa de destino - usados para
+    decidir o que preencher automaticamente e o que exigir via modal quando
+    a transição chega diretamente nela (sem pular etapas)."""
+    return STAGE_DATE_REQUIREMENTS.get(code, [])
 
 
 def stages_to_confirm(reference_code, target_code):
