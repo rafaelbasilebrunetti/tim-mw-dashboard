@@ -13,6 +13,18 @@ export const MILESTONE_ORDER = [
   "PPI Customer Approval",
 ];
 
+// Campos com uma lista fixa de opções em vez de texto livre. Usado por
+// FieldInput.jsx para decidir entre <select> e <input>.
+export const SELECT_OPTIONS = {
+  supplier: ["BEHIVE", "PROTENG", "CELPLAN"],
+};
+
+// Campos removidos da dashboard (pedido do processo): continuam existindo
+// no schema, no banco e na planilha - só não aparecem em nenhuma tela.
+// Hold saiu porque a informação já vive em Preliminary Status Detail
+// (00.1/03.0/04.0/06.1); Status Qualificação saiu do processo.
+export const HIDDEN_FIELDS = new Set(["hold", "status_qualificacao"]);
+
 const IDENTIFICATION_FIELDS = new Set([
   "oc", "tim_key", "hop", "site_a", "end_id_a", "site_b", "end_id_b",
   "dd_a", "dd_b", "infra_type_a", "infra_type_b", "site_status_a",
@@ -37,6 +49,7 @@ export function groupSchema(schema) {
   };
 
   for (const field of schema) {
+    if (HIDDEN_FIELDS.has(field.internal_name)) continue;
     if (field.milestone_group) {
       groups["Cronograma (Planejado / Realizado)"].push(field);
     } else if (field.type === "float") {

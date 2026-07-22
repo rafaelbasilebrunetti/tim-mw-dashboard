@@ -1,30 +1,33 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { groupSchema } from "../schemaUtils";
-import { resolveCompletion } from "../statusFlow";
+import { resolveCompletion, mainLabelForDetailCode, resolveOwner, extractCode } from "../statusFlow";
 import StatusFlow from "./StatusFlow";
+import RemarkModal from "./RemarkModal";
+import PipelineModal from "./PipelineModal";
 
-function FieldValue({ field, value }) {
-  const label = field.role
-    ? `${field.milestone_group} — ${field.role === "planned" ? "Planejado" : "Realizado"}`
-    : field.label;
-
+/** Uma célula rótulo/valor simples, usada nos layouts fixos abaixo. */
+function Field({ label, value, mono = true }) {
   return (
     <div>
       <span className="block text-[11px] text-muted">{label}</span>
-      <span className="font-mono text-[13px] text-ink">{value || "—"}</span>
+      <span className={`text-[13px] text-ink ${mono ? "font-mono" : ""}`}>{value || "—"}</span>
     </div>
   );
 }
 
-export default function SiteDetailModal({ schema, link, onEdit, onTransition, onClose, onEnriched }) {
-  const groups = groupSchema(schema);
+function SectionTitle({ children }) {
+  return <h3 className="mb-3 text-[13px] font-medium uppercase tracking-wide text-accent">{children}</h3>;
+}
+
+export default function SiteDetailModal({ link, onEdit, onTransition, onClose, onEnriched }) {
   const [displayLink, setDisplayLink] = useState(link);
+  const [showRemarks, setShowRemarks] = useState(false);
+  const [showPipeline, setShowPipeline] = useState(false);
   const completion = resolveCompletion(displayLink);
 
   // Mantém displayLink em dia sempre que o registro mudar por fora (ex:
-  // depois de uma transição de etapa feita no StageTransitionModal) - não
-  // só na primeira renderização de um site diferente.
+  // depois de uma transição de etapa ou de um comentário novo) - não só
+  // na primeira renderização de um site diferente.
   useEffect(() => {
     setDisplayLink(link);
   }, [link]);
@@ -48,10 +51,25 @@ export default function SiteDetailModal({ schema, link, onEdit, onTransition, on
     };
   }, [link.id]);
 
+  function handleRemarkSaved(updated) {
+    setDisplayLink(updated);
+    onEnriched?.(updated);
+  }
+
+  // Preliminary Status NUNCA é um campo à parte na tela: ele sempre segue
+  // o que Preliminary Status Detail diz (ver statusFlow.mainLabelForDetailCode).
+  // Se o texto salvo não bater com nenhum código conhecido, cai para o que
+  // já estava gravado, para nunca mostrar a tela em branco por causa de um
+  // dado antigo/fora do padrão.
+  const detailCode = extractCode(displayLink.preliminary_status_detail) || extractCode(displayLink.preliminary_status);
+  const mainStatusLabel = mainLabelForDetailCode(detailCode) || displayLink.preliminary_status || "—";
+  const detailLabel = displayLink.preliminary_status_detail || "—";
+  const owner = resolveOwner(detailCode);
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div
-        className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-xl border border-line bg-surface shadow-2xl"
+        className="flex h-[92vh] w-full max-w-[1500px] flex-col rounded-xl border border-line bg-surface shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
@@ -62,6 +80,12 @@ export default function SiteDetailModal({ schema, link, onEdit, onTransition, on
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowPipeline(true)}
+              className="rounded-md border border-line px-3 py-1.5 text-[13px] text-muted hover:text-ink"
+            >
+              Ver fluxograma
+            </button>
             <button
               onClick={() => onTransition(displayLink)}
               className="rounded-md border border-line px-3 py-1.5 text-[13px] text-muted hover:text-ink"
@@ -85,6 +109,7 @@ export default function SiteDetailModal({ schema, link, onEdit, onTransition, on
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
+          {/* ---------- Progresso ---------- */}
           <div className="mb-6 rounded-lg border border-line bg-base px-4 py-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-[13px] font-medium uppercase tracking-wide text-accent">
@@ -111,22 +136,109 @@ export default function SiteDetailModal({ schema, link, onEdit, onTransition, on
             <StatusFlow mainStatus={displayLink.preliminary_status} detailStatus={displayLink.preliminary_status_detail} />
           </div>
 
-          {Object.entries(groups).map(([groupName, fields]) =>
-            fields.length ? (
-              <fieldset key={groupName} className="mb-6">
-                <legend className="mb-3 text-[13px] font-medium uppercase tracking-wide text-accent">
-                  {groupName}
-                </legend>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {fields.map((field) => (
-                    <FieldValue key={field.internal_name} field={field} value={displayLink[field.internal_name]} />
-                  ))}
+          {/* ---------- Identificação (ordem fixa) ---------- */}
+          <fieldset className="mb-6">
+            <SectionTitle>Identificação</SectionTitle>
+            <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-5 gap-3">
+                <Field label="OC" value={displayLink.oc} />
+                <Field label="TIM KEY" value={displayLink.tim_key} />
+                <Field label="HOP" value={displayLink.hop} />
+                <Field label="DU VIRTUAL" value={displayLink.du_id_virtual} />
+                <Field label="DU PRELIMINAR" value={displayLink.du_id_preliminar} />
+              </div>
+              <div className="grid grid-cols-7 gap-3 border-t border-line/60 pt-3">
+                <Field label="SITE A" value={displayLink.site_a} />
+                <Field label="END ID A" value={displayLink.end_id_a} />
+                <Field label="INFRA TYPE A" value={displayLink.infra_type_a} mono={false} />
+                <Field label="DD A" value={displayLink.dd_a} />
+                <Field label="MUNICÍPIO A" value={displayLink.municipio_a} mono={false} />
+                <Field label="DETENTORA A" value={displayLink.detentora_a} mono={false} />
+                <Field label="SITE STATUS A" value={displayLink.site_status_a} mono={false} />
+              </div>
+              <div className="grid grid-cols-7 gap-3 border-t border-line/60 pt-3">
+                <Field label="SITE B" value={displayLink.site_b} />
+                <Field label="END ID B" value={displayLink.end_id_b} />
+                <Field label="INFRA TYPE B" value={displayLink.infra_type_b} mono={false} />
+                <Field label="DD B" value={displayLink.dd_b} />
+                <Field label="MUNICÍPIO B" value={displayLink.municipio_b} mono={false} />
+                <Field label="DETENTORA B" value={displayLink.detentora_b} mono={false} />
+                <Field label="SITE STATUS B" value={displayLink.site_status_b} mono={false} />
+              </div>
+              <div className="grid grid-cols-6 gap-3 border-t border-line/60 pt-3">
+                <Field label="PRE-PO#" value={displayLink.pre_po} />
+                <Field label="DU HW PTA" value={displayLink.du_hw_pta} />
+                <Field label="DU HW PTB" value={displayLink.du_hw_ptb} />
+                <Field label="SURVEY PO" value={displayLink.survey_po} />
+                <Field label="SCOPE" value={displayLink.scope} mono={false} />
+                <Field label="TARGET" value={displayLink.target} mono={false} />
+              </div>
+            </div>
+          </fieldset>
+
+          {/* ---------- Status & Fornecedor (ordem fixa) ---------- */}
+          <fieldset className="mb-6">
+            <SectionTitle>Status &amp; Fornecedor</SectionTitle>
+            <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Preliminary Status" value={mainStatusLabel} mono={false} />
+                <Field label="Preliminary Status Detail" value={detailLabel} mono={false} />
+                <Field label="Owner" value={owner} mono={false} />
+              </div>
+
+              <div className="border-t border-line/60 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowRemarks(true)}
+                  className="flex items-center gap-2 rounded-md border border-line px-3 py-1.5 text-[13px] text-muted hover:text-ink"
+                >
+                  💬 Preliminary Remark
+                  {displayLink.preliminary_remark && (
+                    <span className="rounded-full bg-accent/15 px-1.5 text-[11px] text-accent">tem observações</span>
+                  )}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-4 gap-3 border-t border-line/60 pt-3">
+                <Field label="SUPPLIER" value={displayLink.supplier} mono={false} />
+                <Field label="PO SUPPLIER" value={displayLink.po_supplier} mono={false} />
+                <Field label="PO Remark" value={displayLink.po_remark} mono={false} />
+                <Field label="Supplier Scope" value={displayLink.supplier_scope} mono={false} />
+              </div>
+
+              <div className="border-t border-line/60 pt-3">
+                <Field label="PR Supplier" value={displayLink.pr_supplier} mono={false} />
+              </div>
+
+              <div className="border-t border-line pt-3">
+                <span className="mb-2 block text-[11px] uppercase tracking-wide text-muted">Pré Preliminar</span>
+                <div className="grid grid-cols-4 gap-3">
+                  <Field label="PO DATE" value={displayLink.po_date} />
+                  <Field label="DU CREATION" value={displayLink.du_creation} />
+                  <Field label="SAR / PE PTA" value={displayLink.sar_pe_pta} mono={false} />
+                  <Field label="SAR / PE PTB" value={displayLink.sar_pe_ptb} mono={false} />
                 </div>
-              </fieldset>
-            ) : null
-          )}
+              </div>
+
+              {displayLink.previous_status_detail && (
+                <div className="border-t border-line/60 pt-3">
+                  <Field
+                    label="Previous Status Detail (etapa anterior à mudança)"
+                    value={displayLink.previous_status_detail}
+                    mono={false}
+                  />
+                </div>
+              )}
+            </div>
+          </fieldset>
         </div>
       </div>
+
+      {showRemarks && (
+        <RemarkModal link={displayLink} onClose={() => setShowRemarks(false)} onSaved={handleRemarkSaved} />
+      )}
+
+      {showPipeline && <PipelineModal onClose={() => setShowPipeline(false)} />}
     </div>
   );
 }

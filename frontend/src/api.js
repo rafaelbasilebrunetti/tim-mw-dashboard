@@ -67,14 +67,29 @@ export const api = {
       body: JSON.stringify(payload),
     }).then(handle),
 
-  importFile: (file, { upsert = false } = {}) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("upsert", upsert);
-    return fetch(`${BASE_URL}/import`, {
+  // Exportação formatada: o .xlsx é montado no backend a partir do
+  // template em config/templates/ (ver export_excel.py), então a resposta
+  // é um arquivo binário, não JSON.
+  downloadExport: async (ids) => {
+    const res = await fetch(`${BASE_URL}/export`, {
       method: "POST",
       credentials: "include",
-      body: formData,
-    }).then(handle);
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: ids || null }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      const error = new Error(data?.detail || `Erro ${res.status}`);
+      error.status = res.status;
+      throw error;
+    }
+
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match = /filename="?([^"]+)"?/.exec(disposition);
+    return {
+      blob: await res.blob(),
+      fileName: match ? match[1] : "TIM_MW_SP_Preliminary_Report.xlsx",
+    };
   },
 };

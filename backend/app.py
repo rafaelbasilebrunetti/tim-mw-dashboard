@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from auth import require_auth
 from auth import router as auth_router
 from database import create_table, get_connection
+from export_routes import router as export_router
 from import_routes import router as import_router
 from routes import router
 from spreadsheet_store import sync_from_spreadsheet
@@ -41,6 +42,7 @@ app.include_router(auth_router)
 # Todo o resto da API (schema, links, import) exige sessão válida.
 app.include_router(router, dependencies=[Depends(require_auth)])
 app.include_router(import_router, dependencies=[Depends(require_auth)])
+app.include_router(export_router, dependencies=[Depends(require_auth)])
 
 
 @app.on_event("startup")

@@ -35,6 +35,46 @@ export const STATUS_DETAILS = [
   { code: "06.2", label: "Preliminary Finished", parentCode: "06" },
 ];
 
+// Owner responsável por cada sub-etapa (Regra fixa do processo - não vem
+// do banco). Etapas sem entrada aqui (ex: 06.1-SSR Hold, 06.2-Preliminary
+// Finished) não têm um owner definido pela regra; a tela mostra "—".
+export const OWNER_BY_DETAIL_CODE = {
+  "00.0": "Customer",
+  "00.1": "Customer",
+  "01.1": "KA",
+  "01.2": "KA",
+  "02.1": "Customer",
+  "02.2": "P&DC",
+  "02.3": "Customer",
+  "02.4": "P&DC",
+  "03.0": "RDE",
+  "03.1": "RDE/Supplier",
+  "03.2": "RDE/Supplier",
+  "03.3": "RDE/Supplier",
+  "04.0": "RDE",
+  "04.1": "P&DC",
+  "05.1": "Customer",
+  "06.0": "P&DC",
+};
+
+/** Owner da regra fixa para um código de sub-etapa, ou null se não houver. */
+export function resolveOwner(detailCode) {
+  return OWNER_BY_DETAIL_CODE[detailCode] || null;
+}
+
+/**
+ * Rótulo da etapa principal (ex: "02-LOS Simulation / Link Design") a
+ * partir do código de SUB-etapa. Preliminary Status na tela nunca é
+ * digitado à parte - ele sempre segue o que Preliminary Status Detail
+ * diz, via o parentCode declarado em STATUS_DETAILS.
+ */
+export function mainLabelForDetailCode(detailCode) {
+  const detail = STATUS_DETAILS.find((d) => d.code === detailCode);
+  if (!detail) return null;
+  const main = MAIN_STEPS.find((m) => m.code === detail.parentCode);
+  return main ? `${main.code}-${main.label}` : null;
+}
+
 function extractMainCode(text) {
   const match = /^(\d{2})/.exec(String(text || "").trim());
   return match ? match[1] : null;
