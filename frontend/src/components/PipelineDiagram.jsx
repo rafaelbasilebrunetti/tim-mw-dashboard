@@ -6,14 +6,19 @@
  * vem depois de X" e "o que acontece se Y for reprovado/bloqueado", que
  * hoje só vive na cabeça de quem já rodou o processo várias vezes.
  *
- * Duas bifurcações que o fluxo sequencial de status (stage_flow.py) não
+ * Três bifurcações que o fluxo sequencial de status (stage_flow.py) não
  * modela porque são sobre COMO se chega no dado, não sobre datas:
  *
- *   1) Depois de "LOS Simulation": se o resultado for "LOS Block", o
+ *   1) Logo após "PO"/"DU Creation": se o SCOPE do link (coluna AJ) for
+ *      "SWAP", o enlace pula direto para "TSSR Execution" - o mesmo
+ *      atalho da bifurcação (3) - sem passar por SAR/PE, LOS Simulation,
+ *      LOS Analysis nem campo. Se for "NEW LINK", segue o fluxo normal.
+ *
+ *   2) Depois de "LOS Simulation": se o resultado for "LOS Block", o
  *      processo volta para SAR/PE (o documento precisa ser refeito) em
  *      vez de seguir para LOS Analysis.
  *
- *   2) Depois de "LOS Analysis": se o link for do tipo Prospection, segue
+ *   3) Depois de "LOS Analysis": se o link for do tipo Prospection, segue
  *      o caminho longo (LD -> PR Supplier -> TSS -> TSSR e LOS em campo ->
  *      aprovação). Se for Simulation, pula direto para "TSSR Execution"
  *      (o mesmo relatório, mas sem visita a campo) e vai direto para PPI
@@ -92,6 +97,12 @@ export default function PipelineDiagram() {
         <Arrow d="M460,66 V100" markerId="arrow-muted" />
         <Arrow d="M460,146 V180" markerId="arrow-muted" />
         <Arrow d="M460,226 V260" markerId="arrow-muted" />
+        <EdgeLabel x={545} y={163} text="NEW LINK" />
+
+        {/* bifurcação SCOPE=SWAP: do DU Creation direto para TSSR Execution,
+            pulando SAR/PE, LOS Simulation, LOS Analysis e todo o campo */}
+        <Arrow d="M555,123 H870 V463 H785" color={COLOR.accent} markerId="arrow-accent" />
+        <EdgeLabel x={870} y={290} text="SWAP" color={COLOR.accent} />
 
         {/* loop: LOS Block volta para SAR/PE */}
         <Arrow d="M365,283 H300 V203 H365" color={COLOR.hold} markerId="arrow-hold" />
@@ -151,7 +162,7 @@ export default function PipelineDiagram() {
           <line x1={0} y1={24} x2={22} y2={24} stroke={COLOR.done} strokeWidth={2} />
           <text x={28} y={28} fontSize="11" fill={COLOR.muted}>Aprovação / prospection</text>
           <line x1={0} y1={44} x2={22} y2={44} stroke={COLOR.accent} strokeWidth={2} />
-          <text x={28} y={48} fontSize="11" fill={COLOR.muted}>Decisão / simulation</text>
+          <text x={28} y={48} fontSize="11" fill={COLOR.muted}>Decisão / simulation / swap</text>
         </g>
       </svg>
     </div>

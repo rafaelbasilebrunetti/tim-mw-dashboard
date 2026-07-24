@@ -35,7 +35,15 @@ export default function DetailStatusTrack({ link, onChanged, onSwapSiteB }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  const { nodes, holdStop, losResult, fieldSkipped } = buildDetailTrack(link);
+  const {
+    nodes,
+    holdStop,
+    losResult,
+    fieldSkipped,
+    swapSkipped,
+    scopeInconsistent,
+    scopeInconsistentCode,
+  } = buildDetailTrack(link);
   const currentCode =
     extractCode(link.preliminary_status_detail) || extractCode(link.preliminary_status);
   const previousCode = extractCode(link.previous_status_detail);
@@ -142,9 +150,20 @@ export default function DetailStatusTrack({ link, onChanged, onSwapSiteB }) {
         </div>
       </div>
 
-      {fieldSkipped && (
+      {swapSkipped && (
+        <p className="mb-3 text-center text-[11px] text-muted">
+          Caminho SWAP: direto para TSSR Execution — etapas de LOS/documentação/campo (02.1 a 03.3) puladas.
+        </p>
+      )}
+      {!swapSkipped && fieldSkipped && (
         <p className="mb-3 text-center text-[11px] text-muted">
           Caminho Simulation: etapas de campo (03.1/03.2) puladas — TSSR Execution sem visita.
+        </p>
+      )}
+      {scopeInconsistent && (
+        <p className="mb-3 text-center text-[11px] text-status-hold">
+          Inconsistência: {link.tim_key || `#${link.id}`} é SWAP, mas está em {detailLabelOf(scopeInconsistentCode)},
+          uma etapa que não existe no caminho SWAP.
         </p>
       )}
       {losResult === "Block" && (

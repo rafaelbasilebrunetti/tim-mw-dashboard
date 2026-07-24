@@ -18,6 +18,7 @@ export const MILESTONE_ORDER = [
 export const SELECT_OPTIONS = {
   supplier: ["BEHIVE", "PROTENG", "CELPLAN"],
   los_result: ["Prospection", "Simulation", "Block"],
+  scope: ["NEW LINK", "SWAP"],
 };
 
 // Campos removidos da dashboard (pedido do processo): continuam existindo

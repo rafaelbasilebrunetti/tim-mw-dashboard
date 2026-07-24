@@ -1,5 +1,6 @@
 import { useState } from "react";
 import FieldInput from "./FieldInput";
+import { SELECT_OPTIONS } from "../schemaUtils";
 
 const QUICK_ADD_FIELDS = ["oc", "tim_key", "site_a", "site_b", "scope"];
 
@@ -16,6 +17,10 @@ export default function QuickAddModal({ schema, onSave, onClose }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!SELECT_OPTIONS.scope.includes(values.scope)) {
+      setError("Selecione o Escopo (NEW LINK ou SWAP) antes de salvar.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {

@@ -18,6 +18,15 @@ regras adicionais:
   um passo de uma vez, cada etapa intermediária pulada que normalmente
   gravaria uma data (ver STAGE_DATE_REQUIREMENTS) pode ter essa data
   preenchida retroativamente, ou deixada em branco.
+
+  Regra 3 - Bifurcação por SCOPE (coluna AJ): um link com scope "SWAP"
+  pula de 01.2 (Pending DU Creation) direto para 04.1 (PPI Development) -
+  o atalho "TSSR Execution" do fluxograma. As etapas 02.1-02.4/03.1-03.3
+  (ver SWAP_SKIP_CODES) simplesmente NÃO EXISTEM nesse caminho: diferente
+  da Regra 2, elas não contam como "puladas com data retroativa a
+  preencher" quando o scope é SWAP - stages_to_confirm recebe o scope e
+  as exclui do cálculo. Um link "NEW LINK" segue o fluxo sequencial
+  normal, sem esse atalho.
 """
 
 import re
@@ -69,6 +78,26 @@ HOLD_LIKE_CODES = HOLD_CODES | {"03.0", "04.0", "06.1"}
 # calcular quais etapas ficam "puladas" numa transição de mais de um
 # passo, e (2) resolver de onde retomar depois de um Hold/Cancelled.
 SEQUENTIAL_CODES = [d["code"] for d in STATUS_DETAILS if d["code"] not in HOLD_CODES]
+
+# Etapas que não existem no caminho SWAP (Regra 3): todas as sub-etapas
+# de "02-LOS Simulation / Link Design" e "03-LOS / Survey On Field",
+# incluindo a sub-etapa de interrupção "03.0-Survey Hold" - o passo 03
+# inteiro não existe para SWAP (sem ida a campo). Note que o equivalente
+# em frontend/src/statusFlow.js NÃO inclui "03.0": lá a lista filtra
+# DETAIL_TRACK, que não tem nós de interrupção (03.0 é um marcador à
+# parte, resolvido via HOLD_STOP_AT antes da checagem) - os dois
+# conjuntos cobrem o mesmo caminho, cada um na representação do seu lado;
+# mantenha-os em sincronia se as sub-etapas de 02/03 mudarem.
+SWAP_SKIP_CODES = {"02.1", "02.2", "02.3", "02.4", "03.0", "03.1", "03.2", "03.3"}
+
+# Progressão sequencial do caminho SWAP: igual a SEQUENTIAL_CODES, sem as
+# etapas que o atalho "TSSR Execution" pula.
+SEQUENTIAL_CODES_SWAP = [c for c in SEQUENTIAL_CODES if c not in SWAP_SKIP_CODES]
+
+
+def _sequential_codes_for(scope):
+    """Progressão sequencial a considerar para uma transição, de acordo com o SCOPE do link (Regra 3)."""
+    return SEQUENTIAL_CODES_SWAP if scope == "SWAP" else SEQUENTIAL_CODES
 
 
 def _auto(fields):
@@ -174,21 +203,26 @@ def target_requirements(code):
     return STAGE_DATE_REQUIREMENTS.get(code, [])
 
 
-def stages_to_confirm(reference_code, target_code):
+def stages_to_confirm(reference_code, target_code, scope=None):
     """
     Etapas entre reference_code (exclusive) e target_code (inclusive), na
     ordem sequencial - as que exigiriam confirmação/preenchimento de data
     numa transição para a frente (Regra 2). Vazio se não for um avanço
     válido (target não é sequencial, ou não fica à frente da referência).
+
+    `scope` (Regra 3): quando "SWAP", usa a progressão sequencial sem as
+    etapas de SWAP_SKIP_CODES - elas não existem nesse caminho, então uma
+    transição de 01.2 para 04.1 não as trata como puladas.
     """
-    if target_code not in SEQUENTIAL_CODES:
+    sequential = _sequential_codes_for(scope)
+    if target_code not in sequential:
         return []
-    if reference_code not in SEQUENTIAL_CODES:
+    if reference_code not in sequential:
         return [target_code]
-    i, j = SEQUENTIAL_CODES.index(reference_code), SEQUENTIAL_CODES.index(target_code)
+    i, j = sequential.index(reference_code), sequential.index(target_code)
     if j <= i:
         return []
-    return SEQUENTIAL_CODES[i + 1: j + 1]
+    return sequential[i + 1: j + 1]
 
 
 def extract_code(text):
@@ -221,5 +255,6 @@ def serialize_config():
         "hold_codes": sorted(HOLD_CODES),
         "hold_like_codes": sorted(HOLD_LIKE_CODES),
         "sequential_codes": SEQUENTIAL_CODES,
+        "sequential_codes_swap": SEQUENTIAL_CODES_SWAP,
         "stage_date_requirements": STAGE_DATE_REQUIREMENTS,
     }

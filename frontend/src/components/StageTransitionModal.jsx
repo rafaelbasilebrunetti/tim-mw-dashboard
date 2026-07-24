@@ -20,6 +20,12 @@ import { extractCode } from "../statusFlow";
  * gravada automaticamente pelo backend, sem nenhuma pergunta aqui. Se for
  * "manual" (Regra 7) ou "choice" (Regras 9/13), este modal exige a
  * resposta antes de habilitar o botão de confirmar.
+ *
+ * Regra 3 (SCOPE=SWAP): quando o link é SWAP, a progressão sequencial
+ * usada para calcular "etapas puladas" é `sequential_codes_swap` (vinda
+ * de GET /api/stage-flow, espelhando backend/stage_flow.py) em vez de
+ * `sequential_codes` - as etapas que não existem nesse caminho não
+ * aparecem no checklist de preenchimento retroativo.
  */
 function stagesToConfirm(sequentialCodes, referenceCode, targetCode) {
   if (!sequentialCodes.includes(targetCode)) return [];
@@ -31,7 +37,9 @@ function stagesToConfirm(sequentialCodes, referenceCode, targetCode) {
 }
 
 export default function StageTransitionModal({ stageFlow, link, onTransition, onClose }) {
-  const { status_details, hold_codes, sequential_codes, stage_date_requirements } = stageFlow;
+  const { status_details, hold_codes, sequential_codes, sequential_codes_swap, stage_date_requirements } = stageFlow;
+  const isSwap = String(link.scope || "").trim() === "SWAP";
+  const effectiveSequentialCodes = isSwap && sequential_codes_swap ? sequential_codes_swap : sequential_codes;
 
   const currentCode = useMemo(
     () => extractCode(link.preliminary_status_detail) || extractCode(link.preliminary_status),
@@ -49,15 +57,15 @@ export default function StageTransitionModal({ stageFlow, link, onTransition, on
   const [error, setError] = useState(null);
 
   const referenceCode = isCurrentlyHold ? previousCode : currentCode;
-  const toConfirm = targetCode ? stagesToConfirm(sequential_codes, referenceCode, targetCode) : [];
+  const toConfirm = targetCode ? stagesToConfirm(effectiveSequentialCodes, referenceCode, targetCode) : [];
   const skipped = toConfirm.slice(0, -1); // etapas puladas - excluem a própria etapa de destino
   const targetReq = targetCode ? (stage_date_requirements[targetCode] || [])[0] : null;
 
-  const referenceIndex = referenceCode && sequential_codes.includes(referenceCode)
-    ? sequential_codes.indexOf(referenceCode)
+  const referenceIndex = referenceCode && effectiveSequentialCodes.includes(referenceCode)
+    ? effectiveSequentialCodes.indexOf(referenceCode)
     : -1;
-  const targetIndex = targetCode && sequential_codes.includes(targetCode)
-    ? sequential_codes.indexOf(targetCode)
+  const targetIndex = targetCode && effectiveSequentialCodes.includes(targetCode)
+    ? effectiveSequentialCodes.indexOf(targetCode)
     : -1;
   const isBackward = referenceIndex !== -1 && targetIndex !== -1 && targetIndex < referenceIndex;
 
@@ -244,6 +252,12 @@ export default function StageTransitionModal({ stageFlow, link, onTransition, on
             <h2 className="font-mono text-[15px] text-ink">Mudar etapa — {link.tim_key || `#${link.id}`}</h2>
             <p className="text-[12px] text-muted">
               Etapa atual: <span className="text-ink">{link.preliminary_status_detail || "—"}</span>
+              {isSwap && (
+                <>
+                  {" "}
+                  · <span className="text-accent">Caminho SWAP: direto para TSSR Execution</span>
+                </>
+              )}
               {isCurrentlyHold && previousCode && (
                 <>
                   {" "}

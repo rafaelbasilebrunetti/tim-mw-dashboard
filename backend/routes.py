@@ -94,6 +94,11 @@ def transition_link(link_id: int, payload: TransitionRequest):
     `manual_dates` / `choice_fields` e a ausência deles é rejeitada (400) -
     o frontend deve ter aberto o modal correspondente antes de chamar esta
     rota.
+
+    Regra 3 (SCOPE=SWAP) - o scope do link (record["scope"]) é repassado a
+    `stages_to_confirm` para que as etapas que não existem no caminho SWAP
+    (ver stage_flow.SWAP_SKIP_CODES) não sejam tratadas como puladas numa
+    transição de 01.2 direto para 04.1.
     """
     if payload.target_code not in stage_flow.DETAIL_BY_CODE:
         raise HTTPException(status_code=400, detail=f"Etapa '{payload.target_code}' desconhecida")
@@ -128,7 +133,7 @@ def transition_link(link_id: int, payload: TransitionRequest):
             else:
                 reference_code = current_code
 
-            to_confirm = stage_flow.stages_to_confirm(reference_code, target_code)
+            to_confirm = stage_flow.stages_to_confirm(reference_code, target_code, scope=record.get("scope"))
             skipped_codes = to_confirm[:-1]  # tudo menos a própria etapa de destino
 
             allowed_fields = stage_flow.allowed_retroactive_fields(skipped_codes)

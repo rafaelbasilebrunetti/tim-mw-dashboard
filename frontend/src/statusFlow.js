@@ -3,6 +3,10 @@
 // correspondentes no registro (preliminary_status / preliminary_status_detail)
 // são texto livre no backend - este arquivo formaliza a ordem e os
 // rótulos para desenhar o fluxograma (StatusFlow.jsx).
+//
+// Espelha backend/stage_flow.py (ordem/rótulos das etapas e os códigos
+// pulados nos caminhos Simulation/SWAP) - mantenha os dois em sincronia
+// se a ordem, os rótulos, ou as regras de bifurcação mudarem.
 
 export const MAIN_STEPS = [
   { code: "00", label: "Hold/Cancelled" },
@@ -153,6 +157,15 @@ export const FIELD_ONLY_CODES = new Set(["03.1", "03.2"]);
 
 export const LOS_RESULT_OPTIONS = ["Prospection", "Simulation", "Block"];
 
+// Etapas que não existem no caminho SWAP: um enlace SWAP pula de 01.2
+// (DU Creation) direto para 04.1 (PPI Development) pelo atalho "TSSR
+// Execution" - as mesmas etapas de LOS/documentação/campo do caminho
+// Simulation, mais as de LOS Simulation/Link Design (02.x). Espelha
+// SWAP_SKIP_CODES em backend/stage_flow.py - mantenha os dois em sincronia.
+export const SWAP_SKIP_CODES = new Set([
+  "02.1", "02.2", "02.3", "02.4", "03.1", "03.2", "03.3",
+]);
+
 // Onde cada interrupção "encaixa" na trilha: o marcador de parada entra
 // no lugar da etapa indicada (tudo antes dela fica concluído).
 // Ex. do processo: "PPI Hold mostra todas as etapas até o 04.0".
@@ -201,7 +214,11 @@ export function detailLabelOf(code) {
  *   nodes:    [{ code, label, state: done|current|future, dates:[{label,value}] }]
  *   holdStop: { code, label, atIndex } quando a etapa atual é uma
  *             interrupção - o marcador entra em atIndex e a trilha para ali
- *   losResult / fieldSkipped: estado da bifurcação do fluxograma
+ *   losResult / fieldSkipped: estado da bifurcação do fluxograma (Simulation)
+ *   isSwap / swapSkipped: estado da bifurcação do fluxograma (SCOPE=SWAP)
+ *   scopeInconsistent: true quando a etapa atual/de referência do site é
+ *     uma etapa que não existe no caminho SWAP (ex: 02.2) - sinalizada,
+ *     não escondida (mesmo padrão de resolveCompletion).
  *
  * As datas só são preenchidas em etapas passadas (done) - regra do
  * processo: "as datas devem aparecer apenas quando a etapa é passada".
@@ -209,7 +226,11 @@ export function detailLabelOf(code) {
 export function buildDetailTrack(link) {
   const losResult = String(link.los_result || "").trim();
   const fieldSkipped = losResult === "Simulation";
-  const codes = DETAIL_TRACK.filter((c) => !(fieldSkipped && FIELD_ONLY_CODES.has(c)));
+  const isSwap = String(link.scope || "").trim() === "SWAP";
+  const codes = DETAIL_TRACK.filter((c) => {
+    if (isSwap) return !SWAP_SKIP_CODES.has(c);
+    return !(fieldSkipped && FIELD_ONLY_CODES.has(c));
+  });
 
   const currentCode =
     extractCode(link.preliminary_status_detail) || extractCode(link.preliminary_status);
@@ -225,8 +246,11 @@ export function buildDetailTrack(link) {
         : HOLD_STOP_AT[currentCode];
   }
 
+  const scopeInconsistent = isSwap && Boolean(refCode) && SWAP_SKIP_CODES.has(refCode);
+
   // Se a etapa de referência não está visível (ex: 03.1 escondida no
-  // caminho Simulation), ancora na próxima etapa visível do fluxo.
+  // caminho Simulation, ou 02.2 escondida no caminho SWAP), ancora na
+  // próxima etapa visível do fluxo.
   let refIndex = refCode ? codes.indexOf(refCode) : -1;
   if (refCode && refIndex === -1) {
     refIndex = codes.findIndex((c) => c > refCode);
@@ -255,5 +279,9 @@ export function buildDetailTrack(link) {
       : null,
     losResult,
     fieldSkipped,
+    isSwap,
+    swapSkipped: isSwap,
+    scopeInconsistent,
+    scopeInconsistentCode: scopeInconsistent ? refCode : null,
   };
 }
