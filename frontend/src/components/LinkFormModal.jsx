@@ -1,6 +1,76 @@
 import { useState } from "react";
-import { groupSchema } from "../schemaUtils";
+import { groupSchema, buildMilestoneGroups, isSuspiciousDateValue } from "../schemaUtils";
 import FieldInput from "./FieldInput";
+
+const CRONOGRAMA_GROUP = "Cronograma (Planejado / Realizado)";
+
+/** Uma célula de data do cronograma: input normal, ou texto realçado quando o valor é suspeito (ver isSuspiciousDateValue). */
+function ScheduleDateInput({ field, value, onChange }) {
+  if (!field) return <span className="block px-2 py-1.5 text-[12.5px] text-muted">—</span>;
+  const suspicious = isSuspiciousDateValue(value);
+  return (
+    <input
+      type={suspicious ? "text" : "date"}
+      value={value ?? ""}
+      onChange={(e) => onChange(field, e.target.value)}
+      title={
+        suspicious
+          ? "Data suspeita (possível erro de planilha, ex: \"#REF!\" ou época 1900) — revise ou limpe."
+          : undefined
+      }
+      className={`w-full rounded-md border bg-base px-2 py-1.5 font-mono text-[12.5px] text-ink outline-none focus:ring-1 ${
+        suspicious
+          ? "border-status-hold/60 text-status-hold focus:border-status-hold focus:ring-status-hold"
+          : "border-line focus:border-accent focus:ring-accent"
+      }`}
+    />
+  );
+}
+
+/**
+ * Tabela editável do cronograma: uma linha por etapa (milestone_group),
+ * Planejado e Realizado lado a lado - mesmo layout de leitura de
+ * MilestoneDatesTable (SiteDetailModal.jsx), mas com inputs de data.
+ */
+function ScheduleTable({ schema, values, onChange }) {
+  const groups = buildMilestoneGroups(schema);
+  if (!groups.length) return <p className="text-[13px] text-muted">Sem colunas de cronograma no schema.</p>;
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-line">
+      <table className="w-full border-collapse text-left text-[13px]">
+        <thead>
+          <tr className="bg-base text-[11px] uppercase tracking-wide text-muted">
+            <th className="px-3 py-2 font-medium">Etapa</th>
+            <th className="px-3 py-2 font-medium">Planejado</th>
+            <th className="px-3 py-2 font-medium">Realizado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map((group) => (
+            <tr key={group.name} className="border-t border-line/60">
+              <td className="px-3 py-2 text-ink">{group.name}</td>
+              <td className="px-2 py-1.5">
+                <ScheduleDateInput
+                  field={group.planned}
+                  value={group.planned ? values[group.planned] : null}
+                  onChange={onChange}
+                />
+              </td>
+              <td className="px-2 py-1.5">
+                <ScheduleDateInput
+                  field={group.realized}
+                  value={group.realized ? values[group.realized] : null}
+                  onChange={onChange}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export default function LinkFormModal({ schema, initialData, onSave, onClose }) {
   const [values, setValues] = useState(initialData || {});
@@ -50,16 +120,20 @@ export default function LinkFormModal({ schema, initialData, onSave, onClose }) 
                 <legend className="mb-3 text-[13px] font-medium uppercase tracking-wide text-accent">
                   {groupName}
                 </legend>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {fields.map((field) => (
-                    <FieldInput
-                      key={field.internal_name}
-                      field={field}
-                      value={values[field.internal_name]}
-                      onChange={handleChange}
-                    />
-                  ))}
-                </div>
+                {groupName === CRONOGRAMA_GROUP ? (
+                  <ScheduleTable schema={schema} values={values} onChange={handleChange} />
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {fields.map((field) => (
+                      <FieldInput
+                        key={field.internal_name}
+                        field={field}
+                        value={values[field.internal_name]}
+                        onChange={handleChange}
+                      />
+                    ))}
+                  </div>
+                )}
               </fieldset>
             ) : null
           )}

@@ -67,21 +67,39 @@ export function groupSchema(schema) {
 }
 
 /**
+ * Agrupa os campos de cronograma do schema em pares Planejado/Realizado
+ * por milestone_group (ex: "LOS Simulation" -> { planned: "los_simulation_p",
+ * realized: "los_simulation_r" }), na ordem em que aparecem na planilha
+ * (field.index). Fonte única usada por buildMilestoneTrack, pela tabela
+ * de leitura em SiteDetailModal.jsx e pela tabela editável em
+ * LinkFormModal.jsx - mantenha os três em sincronia se essa forma mudar.
+ */
+export function buildMilestoneGroups(schema) {
+  const groups = [];
+  const byName = new Map();
+  for (const field of [...schema].sort((a, b) => a.index - b.index)) {
+    if (!field.milestone_group) continue;
+    if (!byName.has(field.milestone_group)) {
+      const group = { name: field.milestone_group, planned: null, realized: null };
+      byName.set(field.milestone_group, group);
+      groups.push(group);
+    }
+    byName.get(field.milestone_group)[field.role] = field.internal_name;
+  }
+  return groups;
+}
+
+/**
  * Constrói a trilha de marcos para uma linha: para cada etapa em
  * MILESTONE_ORDER, olha os campos _p e _r correspondentes no registro
  * e decide o estado: 'done' (tem realizado), 'planned' (só planejado),
  * 'pending' (nenhum dos dois).
  */
 export function buildMilestoneTrack(schema, record) {
-  const byGroup = {};
-  for (const field of schema) {
-    if (!field.milestone_group) continue;
-    byGroup[field.milestone_group] ??= {};
-    byGroup[field.milestone_group][field.role] = field.internal_name;
-  }
+  const byName = new Map(buildMilestoneGroups(schema).map((g) => [g.name, g]));
 
-  return MILESTONE_ORDER.filter((name) => byGroup[name]).map((name) => {
-    const { planned, realized } = byGroup[name];
+  return MILESTONE_ORDER.filter((name) => byName.has(name)).map((name) => {
+    const { planned, realized } = byName.get(name);
     const plannedValue = planned ? record[planned] : null;
     const realizedValue = realized ? record[realized] : null;
     let status = "pending";
@@ -89,6 +107,22 @@ export function buildMilestoneTrack(schema, record) {
     else if (plannedValue) status = "planned";
     return { name, status, plannedValue, realizedValue };
   });
+}
+
+/**
+ * Detecta valores de data claramente inválidos vindos da planilha: texto
+ * que não é uma data ISO reconhecível (ex: "#REF!", erro de fórmula do
+ * Excel) ou uma data de época (ano < 1990) - artefato comum de subtração
+ * de células vazias no Excel (ex: "01/04/1900"). Usado para destacar essas
+ * células na tabela editável de cronograma (LinkFormModal.jsx), não para
+ * bloquear nada - a limpeza continua manual.
+ */
+export function isSuspiciousDateValue(value) {
+  const str = String(value ?? "").trim();
+  if (!str) return false;
+  const match = /^(\d{4})-\d{2}-\d{2}/.exec(str);
+  if (!match) return true;
+  return Number(match[1]) < 1990;
 }
 
 export function statusColor(status) {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { resolveCompletion, mainLabelForDetailCode, resolveOwner, extractCode } from "../statusFlow";
+import { buildMilestoneGroups } from "../schemaUtils";
 import StatusFlow from "./StatusFlow";
 import DetailStatusTrack from "./DetailStatusTrack";
 import RemarkModal from "./RemarkModal";
@@ -29,18 +30,7 @@ function SectionTitle({ children }) {
  * etapas passadas; aqui fica o quadro completo, inclusive planejados.
  */
 function MilestoneDatesTable({ schema, link }) {
-  // Agrupa preservando a ordem de aparição na planilha.
-  const groups = [];
-  const byName = new Map();
-  for (const field of [...schema].sort((a, b) => a.index - b.index)) {
-    if (!field.milestone_group) continue;
-    if (!byName.has(field.milestone_group)) {
-      const group = { name: field.milestone_group, planned: null, realized: null };
-      byName.set(field.milestone_group, group);
-      groups.push(group);
-    }
-    byName.get(field.milestone_group)[field.role] = field.internal_name;
-  }
+  const groups = buildMilestoneGroups(schema);
 
   if (!groups.length) return <p className="text-[13px] text-muted">Sem colunas de cronograma no schema.</p>;
 
