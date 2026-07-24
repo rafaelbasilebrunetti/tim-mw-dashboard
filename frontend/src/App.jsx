@@ -223,6 +223,7 @@ export default function App() {
 
       {selectedLink && (
         <SiteDetailModal
+          schema={schema}
           link={selectedLink}
           onEdit={(link) => {
             setSelectedLink(null);
